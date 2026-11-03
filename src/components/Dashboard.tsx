@@ -40,7 +40,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     p.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const totalElements = projects.reduce((acc, p) => acc + p.elements.length, 0);
+  const totalElements = projects.reduce((acc, p) => {
+    if (p.pages && p.pages.length > 0) {
+      return acc + p.pages.reduce((pAcc, pg) => pAcc + pg.elements.length, 0);
+    }
+    return acc + (p.elements?.length || 0);
+  }, 0);
 
   const formatRelativeTime = (isoString: string) => {
     try {
@@ -260,7 +265,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <div className="flex items-center gap-2 mt-4 text-[11px] text-zinc-400">
                       <span className="flex items-center gap-1 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800/80">
                         <Layers size={11} className="text-blue-400" />
-                        <span className="font-mono">{project.elements.length}</span> components
+                        <span className="font-mono">{project.pages?.length || 1}</span> screens • <span className="font-mono">{project.pages ? project.pages.reduce((acc, pg) => acc + pg.elements.length, 0) : (project.elements?.length || 0)}</span> components
                       </span>
                       <span className="text-zinc-500 font-mono text-[10px]">
                         Edited {formatRelativeTime(project.updatedAt)}

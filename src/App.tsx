@@ -9,18 +9,32 @@ import {
   CanvasElement, 
   ComponentType, 
   ViewportMode, 
-  BottomPanelTab 
+  LeftPanelTab,
+  BottomDrawerTab,
+  PageTransition,
+  AppExecutionLog
 } from './types/editor';
 import { 
   createInitialProject, 
   createNewElement, 
+  ensureProjectPages,
+  createPage,
+  duplicatePage,
+  deletePage,
+  renamePage,
+  setHomePage,
+  switchActivePage,
+  updatePageTransition,
   addElement, 
   updateElement, 
   deleteElement, 
   duplicateElement, 
   reorderElements, 
   toggleElementVisibility, 
-  toggleElementLock 
+  toggleElementLock,
+  groupElementsIntoContainer,
+  ungroupContainer,
+  getActivePage
 } from './utils/project-engine';
 import { 
   getStoredProjects, 
@@ -31,7 +45,7 @@ import {
 } from './utils/storage';
 import { Dashboard } from './components/Dashboard';
 import { TopToolbar } from './components/TopToolbar';
-import { ComponentLibrary } from './components/ComponentLibrary';
+import { LeftSidebar } from './components/LeftSidebar';
 import { CanvasArea } from './components/CanvasArea';
 import { PropertiesPanel } from './components/PropertiesPanel';
 import { BottomPanel } from './components/BottomPanel';
@@ -44,11 +58,24 @@ export default function App() {
   const [activeProjectId, setActiveId] = useState<string | null>(() => getActiveProjectId());
   const [view, setView] = useState<'dashboard' | 'editor' | 'preview'>('dashboard');
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [bottomPanelTab, setBottomPanelTab] = useState<BottomPanelTab>('layers');
+  const [leftTab, setLeftTab] = useState<LeftPanelTab>('components');
+  const [bottomTab, setBottomTab] = useState<BottomDrawerTab>('logic');
   
   // History for Undo / Redo
   const [past, setPast] = useState<Project[]>([]);
   const [future, setFuture] = useState<Project[]>([]);
+
+  // Logs stream for runtime telemetry
+  const [logs, setLogs] = useState<AppExecutionLog[]>([
+    {
+      id: 'log_init',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      type: 'action',
+      sourceElement: 'System',
+      message: 'AppForge IDE studio initialized with multi-page router.',
+      status: 'info',
+    },
+  ]);
 
   // Modals & Save Telemetry
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -56,7 +83,8 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('All changes saved');
 
-  const activeProject = projects.find((p) => p.id === activeProjectId) || null;
+  const rawActiveProject = projects.find((p) => p.id === activeProjectId) || null;
+  const activeProject = rawActiveProject ? ensureProjectPages(rawActiveProject) : null;
 
   // Persist projects whenever they change
   useEffect(() => {
@@ -67,6 +95,19 @@ export default function App() {
   useEffect(() => {
     setActiveProjectId(activeProjectId);
   }, [activeProjectId]);
+
+  // Log an event to the bottom console
+  const handleLogExecution = useCallback((source: string, message: string, type: any = 'action', status: any = 'success') => {
+    const newLog: AppExecutionLog = {
+      id: 'log_' + Math.random().toString(36).substring(2, 8),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      type,
+      sourceElement: source,
+      message,
+      status,
+    };
+    setLogs((prev) => [newLog, ...prev.slice(0, 49)]);
+  }, []);
 
   // Push state to undo history before applying change
   const applyProjectMutation = useCallback(
@@ -85,7 +126,7 @@ export default function App() {
       setTimeout(() => {
         setIsSaving(false);
         setLastSavedText(`Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-      }, 300);
+      }, 250);
     },
     [activeProject]
   );
@@ -101,7 +142,8 @@ export default function App() {
     setProjects((prev) =>
       prev.map((p) => (p.id === previous.id ? previous : p))
     );
-  }, [past, activeProject]);
+    handleLogExecution('Undo', 'Reverted previous action', 'action', 'info');
+  }, [past, activeProject, handleLogExecution]);
 
   // Redo Handler
   const handleRedo = useCallback(() => {
@@ -114,7 +156,8 @@ export default function App() {
     setProjects((prev) =>
       prev.map((p) => (p.id === next.id ? next : p))
     );
-  }, [future, activeProject]);
+    handleLogExecution('Redo', 'Reapplied action', 'action', 'info');
+  }, [future, activeProject, handleLogExecution]);
 
   // Keyboard shortcut listener for Undo / Redo
   useEffect(() => {
@@ -136,7 +179,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
-  // Action Handlers
+  // Navigation & Project Handlers
   const handleOpenProject = (id: string) => {
     setActiveId(id);
     setSelectedElementId(null);
@@ -160,8 +203,8 @@ export default function App() {
 
   const handleQuickCreate = (templateId: string) => {
     const titles: Record<string, string> = {
-      saas: 'SaaS Metric Hub',
-      contact: 'Customer Contact Form',
+      saas: 'Executive Analytics Hub',
+      contact: 'Enterprise Lead Portal',
       card: 'Product Showcase Card',
       blank: 'Blank Canvas App',
     };
@@ -188,13 +231,55 @@ export default function App() {
     setProjects((prev) => [duplicated, ...prev]);
   };
 
-  const handleAddComponent = (type: ComponentType, customProps?: Record<string, any>) => {
+  // Multi-Page Actions
+  const handleSwitchPage = (pageId: string) => {
+    applyProjectMutation((proj) => switchActivePage(proj, pageId));
+    setSelectedElementId(null);
+    handleLogExecution('Router', `Switched active editing screen to ${pageId}`, 'navigation', 'info');
+  };
+
+  const handleCreatePage = (name: string, path?: string, transition?: PageTransition) => {
+    applyProjectMutation((proj) => createPage(proj, name, path, transition));
+    setSelectedElementId(null);
+    handleLogExecution('Pages', `Created new screen "${name}"`, 'action', 'success');
+  };
+
+  const handleDuplicatePage = (pageId: string) => {
+    applyProjectMutation((proj) => duplicatePage(proj, pageId));
+    handleLogExecution('Pages', 'Duplicated screen layout and elements', 'action', 'success');
+  };
+
+  const handleDeletePage = (pageId: string) => {
+    applyProjectMutation((proj) => deletePage(proj, pageId));
+    handleLogExecution('Pages', 'Deleted screen', 'action', 'warning');
+  };
+
+  const handleRenamePage = (pageId: string, name: string) => {
+    applyProjectMutation((proj) => renamePage(proj, pageId, name));
+  };
+
+  const handleSetHomePage = (pageId: string) => {
+    applyProjectMutation((proj) => setHomePage(proj, pageId));
+    handleLogExecution('Pages', `Set starting screen to ${pageId}`, 'action', 'info');
+  };
+
+  const handleUpdatePageTransition = (pageId: string, transition: PageTransition) => {
+    applyProjectMutation((proj) => updatePageTransition(proj, pageId, transition));
+  };
+
+  // Element Actions
+  const handleAddComponent = (
+    type: ComponentType, 
+    customProps?: Record<string, any>, 
+    targetContainerId?: string | null
+  ) => {
     const newEl = createNewElement(type);
     if (customProps) {
       newEl.props = { ...newEl.props, ...customProps };
     }
-    applyProjectMutation((proj) => addElement(proj, newEl));
+    applyProjectMutation((proj) => addElement(proj, newEl, targetContainerId));
     setSelectedElementId(newEl.id);
+    handleLogExecution('Library', `Added ${newEl.name} to active screen`, 'action', 'success');
   };
 
   const handleUpdateElement = (id: string, updates: Partial<CanvasElement>) => {
@@ -206,10 +291,12 @@ export default function App() {
     if (selectedElementId === id) {
       setSelectedElementId(null);
     }
+    handleLogExecution('Canvas', `Deleted element #${id.slice(-4)}`, 'action', 'warning');
   };
 
   const handleDuplicateElement = (id: string) => {
     applyProjectMutation((proj) => duplicateElement(proj, id));
+    handleLogExecution('Canvas', 'Cloned element', 'action', 'success');
   };
 
   const handleMoveElement = (index: number, direction: 'up' | 'down') => {
@@ -225,6 +312,32 @@ export default function App() {
     applyProjectMutation((proj) => toggleElementLock(proj, id));
   };
 
+  const handleRenameElement = (id: string, name: string) => {
+    applyProjectMutation((proj) => updateElement(proj, id, { name }));
+  };
+
+  const handleGroupSelected = () => {
+    if (!selectedElementId || !activeProject) return;
+    const activePage = getActivePage(activeProject);
+    const newElements = groupElementsIntoContainer(activePage.elements, [selectedElementId]);
+    applyProjectMutation((proj) => ({
+      ...proj,
+      pages: proj.pages.map((p) => (p.id === activePage.id ? { ...p, elements: newElements } : p)),
+    }));
+    handleLogExecution('Layers', 'Grouped element into Flex Container', 'action', 'success');
+  };
+
+  const handleUngroupContainer = (containerId: string) => {
+    if (!activeProject) return;
+    const activePage = getActivePage(activeProject);
+    const newElements = ungroupContainer(activePage.elements, containerId);
+    applyProjectMutation((proj) => ({
+      ...proj,
+      pages: proj.pages.map((p) => (p.id === activePage.id ? { ...p, elements: newElements } : p)),
+    }));
+    handleLogExecution('Layers', 'Ungrouped container into root elements', 'action', 'info');
+  };
+
   const handleManualSave = () => {
     if (!activeProject) return;
     setIsSaving(true);
@@ -232,7 +345,7 @@ export default function App() {
     setTimeout(() => {
       setIsSaving(false);
       setLastSavedText(`Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-    }, 300);
+    }, 250);
   };
 
   // If in Preview Mode
@@ -241,6 +354,7 @@ export default function App() {
       <PreviewMode
         project={activeProject}
         onExitPreview={() => setView('editor')}
+        onLogExecution={handleLogExecution}
       />
     );
   }
@@ -266,8 +380,9 @@ export default function App() {
     );
   }
 
-  // Active Selected Element
-  const selectedElement = activeProject.elements.find((el) => el.id === selectedElementId) || null;
+  // Active Selected Element and Page
+  const activePage = getActivePage(activeProject);
+  const selectedElement = activePage.elements.find((el) => el.id === selectedElementId) || null;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden select-none">
@@ -278,6 +393,13 @@ export default function App() {
           applyProjectMutation((proj) => ({ ...proj, name, updatedAt: new Date().toISOString() }));
         }}
         onBackToDashboard={() => setView('dashboard')}
+        pages={activeProject.pages}
+        activePageId={activeProject.activePageId}
+        homePageId={activeProject.homePageId}
+        onSwitchPage={handleSwitchPage}
+        onOpenCreatePage={() => {
+          setLeftTab('pages');
+        }}
         canUndo={past.length > 0}
         canRedo={future.length > 0}
         onUndo={handleUndo}
@@ -297,20 +419,44 @@ export default function App() {
         lastSavedText={lastSavedText}
       />
 
-      {/* 2. Middle Work Area: Library + Canvas + Properties */}
+      {/* 2. Middle Work Area: LeftSidebar + CanvasArea + PropertiesPanel */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left Component Library */}
-        <ComponentLibrary onAddComponent={handleAddComponent} />
+        {/* Left Sidebar (Components, Pages, Layers, Assets) */}
+        <LeftSidebar
+          project={activeProject}
+          activeTab={leftTab}
+          onChangeTab={setLeftTab}
+          selectedElementId={selectedElementId}
+          onSelectElement={setSelectedElementId}
+          onAddComponent={handleAddComponent}
+          onSwitchPage={handleSwitchPage}
+          onCreatePage={handleCreatePage}
+          onDuplicatePage={handleDuplicatePage}
+          onDeletePage={handleDeletePage}
+          onRenamePage={handleRenamePage}
+          onSetHomePage={handleSetHomePage}
+          onUpdatePageTransition={handleUpdatePageTransition}
+          onMoveElement={handleMoveElement}
+          onToggleVisibility={handleToggleVisibility}
+          onToggleLock={handleToggleLock}
+          onDeleteElement={handleDeleteElement}
+          onDuplicateElement={handleDuplicateElement}
+          onRenameElement={handleRenameElement}
+          onGroupSelected={handleGroupSelected}
+          onUngroupContainer={handleUngroupContainer}
+        />
 
         {/* Central Canvas Area */}
         <CanvasArea
-          elements={activeProject.elements}
+          activePage={activePage}
+          elements={activePage.elements}
           selectedElementId={selectedElementId}
           onSelectElement={setSelectedElementId}
           onDeleteElement={handleDeleteElement}
           onDuplicateElement={handleDuplicateElement}
           onMoveElement={handleMoveElement}
-          onDropComponent={handleAddComponent}
+          onDropComponent={(type, targetContainerId) => handleAddComponent(type, undefined, targetContainerId)}
+          onGroupSelected={handleGroupSelected}
           viewport={activeProject.viewport}
           zoom={activeProject.zoom}
           canvasBg={activeProject.canvasBg}
@@ -332,18 +478,16 @@ export default function App() {
         />
       </div>
 
-      {/* 3. Bottom Panel for Layers, Assets, and Events */}
+      {/* 3. Bottom Panel (Logic Flowchart, Logs & Console, Diagnostic Tests) */}
       <BottomPanel
-        activeTab={bottomPanelTab}
-        onChangeTab={setBottomPanelTab}
-        elements={activeProject.elements}
-        selectedElementId={selectedElementId}
-        onSelectElement={setSelectedElementId}
-        onMoveElement={handleMoveElement}
-        onToggleVisibility={handleToggleVisibility}
-        onDeleteElement={handleDeleteElement}
-        onAddElement={handleAddComponent}
+        project={activeProject}
+        activeTab={bottomTab}
+        onChangeTab={setBottomTab}
+        selectedElement={selectedElement}
         onUpdateElement={handleUpdateElement}
+        logs={logs}
+        onClearLogs={() => setLogs([])}
+        onRunTestScenario={(test) => handleLogExecution('Test Suite', `Executed: ${test}`, 'action', 'success')}
       />
 
       {/* Export Modal */}

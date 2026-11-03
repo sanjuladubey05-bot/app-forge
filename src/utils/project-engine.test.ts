@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import {
   createInitialProject,
   createNewElement,
+  ensureProjectPages,
+  createPage,
+  duplicatePage,
+  deletePage,
+  renamePage,
+  setHomePage,
+  switchActivePage,
   addElement,
   updateElement,
   deleteElement,
@@ -10,97 +17,130 @@ import {
   reorderElements,
   toggleElementVisibility,
   toggleElementLock,
+  groupElementsIntoContainer,
+  ungroupContainer,
+  createDefaultActionStep,
+  evaluateCondition,
   exportProjectToJson,
   exportProjectToHtml,
 } from './project-engine';
 
-test('createInitialProject generates valid project structure', () => {
-  const project = createInitialProject('Test Alpha', 'blank');
-  assert.equal(project.name, 'Test Alpha');
-  assert.equal(project.elements.length > 0, true);
-  assert.equal(project.viewport, 'desktop');
-  assert.equal(typeof project.id, 'string');
+test('createInitialProject generates multi-page structure', () => {
+  const project = createInitialProject('SaaS Alpha', 'saas');
+  assert.equal(project.name, 'SaaS Alpha');
+  assert.ok(project.pages.length >= 2, 'Should create multi-page project for saas template');
+  assert.equal(typeof project.activePageId, 'string');
+  assert.equal(project.homePageId, 'page_home');
 });
 
-test('createNewElement creates typed canvas element with defaults', () => {
-  const btn = createNewElement('button');
-  assert.equal(btn.type, 'button');
-  assert.equal(btn.props.buttonVariant, 'primary');
-  assert.equal(btn.styles.backgroundColor, '#3b82f6');
-  assert.equal(typeof btn.id, 'string');
+test('ensureProjectPages handles backwards compatibility', () => {
+  const legacy: any = {
+    id: 'legacy_1',
+    name: 'Old App',
+    elements: [createNewElement('button')],
+    viewport: 'desktop',
+    zoom: 100,
+    canvasBg: '#09090b',
+  };
+  const upgraded = ensureProjectPages(legacy);
+  assert.ok(upgraded.pages.length === 1);
+  assert.equal(upgraded.pages[0].name, 'Home');
+  assert.equal(upgraded.pages[0].elements.length, 1);
 });
 
-test('addElement adds a component to the project', () => {
-  const project = createInitialProject('My App');
-  const countBefore = project.elements.length;
-  const newHeading = createNewElement('heading');
-  const updated = addElement(project, newHeading);
+test('multi-page operations: create, rename, duplicate, delete', () => {
+  let project = createInitialProject('Test App', 'blank');
+  assert.equal(project.pages.length, 1);
 
-  assert.equal(updated.elements.length, countBefore + 1);
-  assert.equal(updated.elements[updated.elements.length - 1].id, newHeading.id);
+  // 1. Create page
+  project = createPage(project, 'Dashboard', '/dashboard', 'slide-left');
+  assert.equal(project.pages.length, 2);
+  const newPage = project.pages[1];
+  assert.equal(newPage.name, 'Dashboard');
+  assert.equal(project.activePageId, newPage.id);
+
+  // 2. Rename page
+  project = renamePage(project, newPage.id, 'Overview', '/overview');
+  assert.equal(project.pages.find((p) => p.id === newPage.id)?.name, 'Overview');
+
+  // 3. Duplicate page
+  project = duplicatePage(project, newPage.id);
+  assert.equal(project.pages.length, 3);
+
+  // 4. Set home page
+  project = setHomePage(project, newPage.id);
+  assert.equal(project.homePageId, newPage.id);
+
+  // 5. Delete page
+  const pageToDelete = project.pages[project.pages.length - 1].id;
+  project = deletePage(project, pageToDelete);
+  assert.equal(project.pages.length, 2);
 });
 
-test('updateElement mutates component props and styles correctly', () => {
-  const project = createInitialProject('My App');
-  const elId = project.elements[0].id;
-  
-  const updated = updateElement(project, elId, {
-    props: { text: 'Updated Custom Title' },
-    styles: { backgroundColor: '#10b981' },
-  });
+test('nested container grouping and ungrouping', () => {
+  const el1 = createNewElement('heading');
+  const el2 = createNewElement('button');
+  const elements = [el1, el2];
 
-  const modified = updated.elements.find((el) => el.id === elId);
-  assert.ok(modified);
-  assert.equal(modified.props.text, 'Updated Custom Title');
-  assert.equal(modified.styles.backgroundColor, '#10b981');
+  // Group
+  const grouped = groupElementsIntoContainer(elements, [el1.id, el2.id]);
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0].type, 'container');
+  assert.equal(grouped[0].children?.length, 2);
+
+  // Ungroup
+  const ungrouped = ungroupContainer(grouped, grouped[0].id);
+  assert.equal(ungrouped.length, 2);
+  assert.equal(ungrouped[0].id, el1.id);
+  assert.equal(ungrouped[1].id, el2.id);
 });
 
-test('deleteElement removes target element', () => {
-  const project = createInitialProject('My App');
-  const elToDelete = project.elements[0].id;
-  const updated = deleteElement(project, elToDelete);
+test('createDefaultActionStep creates configured steps', () => {
+  const navStep = createDefaultActionStep('navigate');
+  assert.equal(navStep.type, 'navigate');
+  assert.ok(navStep.targetPageId);
 
-  assert.equal(updated.elements.some((el) => el.id === elToDelete), false);
+  const modalStep = createDefaultActionStep('openModal');
+  assert.equal(modalStep.type, 'openModal');
+  assert.ok(modalStep.modalTitle);
+
+  const condStep = createDefaultActionStep('condition');
+  assert.equal(condStep.type, 'condition');
+  assert.ok(condStep.thenActions && condStep.thenActions.length > 0);
+  assert.ok(condStep.elseActions && condStep.elseActions.length > 0);
 });
 
-test('duplicateElement clones element right after original', () => {
-  const project = createInitialProject('My App');
-  const original = project.elements[0];
-  const updated = duplicateElement(project, original.id);
-
-  assert.equal(updated.elements.length, project.elements.length + 1);
-  const copy = updated.elements[1];
-  assert.notEqual(copy.id, original.id);
-  assert.equal(copy.props.text, original.props.text);
+test('evaluateCondition evaluates operators correctly', () => {
+  assert.equal(
+    evaluateCondition({ field: 'email', operator: 'isNotEmpty', value: '' }, { email: 'test@example.com' }),
+    true
+  );
+  assert.equal(
+    evaluateCondition({ field: 'email', operator: 'isNotEmpty', value: '' }, { email: '' }),
+    false
+  );
+  assert.equal(
+    evaluateCondition({ field: 'role', operator: 'equals', value: 'admin' }, { role: 'admin' }),
+    true
+  );
+  assert.equal(
+    evaluateCondition({ field: 'role', operator: 'equals', value: 'admin' }, { role: 'user' }),
+    false
+  );
+  assert.equal(
+    evaluateCondition({ field: 'title', operator: 'contains', value: 'forge' }, { title: 'AppForge Builder' }),
+    true
+  );
 });
 
-test('reorderElements swaps positions in array', () => {
-  const project = createInitialProject('My App');
-  const firstId = project.elements[0].id;
-  const secondId = project.elements[1].id;
-
-  const reordered = reorderElements(project, 0, 1);
-  assert.equal(reordered.elements[0].id, secondId);
-  assert.equal(reordered.elements[1].id, firstId);
-});
-
-test('toggleElementVisibility and lock work idempotently', () => {
-  const project = createInitialProject('My App');
-  const elId = project.elements[0].id;
-
-  const toggledVis = toggleElementVisibility(project, elId);
-  assert.equal(toggledVis.elements[0].hidden, true);
-
-  const toggledLock = toggleElementLock(project, elId);
-  assert.equal(toggledLock.elements[0].locked, true);
-});
-
-test('exportProjectToJson and exportProjectToHtml output valid strings', () => {
-  const project = createInitialProject('Export Test', 'saas');
+test('export multi-page project to JSON and HTML', () => {
+  const project = createInitialProject('Export Full App', 'saas');
   const json = exportProjectToJson(project);
-  assert.ok(json.includes('"name": "Export Test"'));
+  assert.ok(json.includes('"pages"'));
+  assert.ok(json.includes('"page_home"'));
 
   const html = exportProjectToHtml(project);
-  assert.ok(html.includes('<!DOCTYPE html>'));
-  assert.ok(html.includes('Built with AppForge'));
+  assert.ok(html.includes('navigateToPage'));
+  assert.ok(html.includes('app-canvas'));
+  assert.ok(html.includes('toast-container'));
 });

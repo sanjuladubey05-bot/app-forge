@@ -1,5 +1,5 @@
 import { Project } from '../types/editor';
-import { createInitialProject } from './project-engine';
+import { createInitialProject, ensureProjectPages } from './project-engine';
 
 const STORAGE_KEY = 'appforge_projects_v1';
 const ACTIVE_PROJECT_KEY = 'appforge_active_project_id';
@@ -18,7 +18,10 @@ export function getStoredProjects(): Project[] {
       return SEED_PROJECTS;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : SEED_PROJECTS;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.map((p) => ensureProjectPages(p));
+    }
+    return SEED_PROJECTS;
   } catch (err) {
     console.error('Failed to parse stored projects, returning seeds', err);
     return SEED_PROJECTS;
