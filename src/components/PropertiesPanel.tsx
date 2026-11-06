@@ -44,7 +44,8 @@ import {
   LogIn,
   LogOut,
   ArrowRightLeft,
-  AlertCircle
+  AlertCircle,
+  Keyboard
 } from 'lucide-react';
 import { createDefaultActionStep, getActivePage } from '../utils/project-engine';
 
@@ -57,6 +58,7 @@ interface PropertiesPanelProps {
   onDuplicateElement: (id: string) => void;
   onToggleVisibility: (id: string) => void;
   onToggleLock: (id: string) => void;
+  onOpenShortcutsModal?: () => void;
 }
 
 export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
@@ -68,6 +70,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   onDuplicateElement,
   onToggleVisibility,
   onToggleLock,
+  onOpenShortcutsModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'props' | 'design' | 'motion' | 'interactions'>('props');
   const [activeTrigger, setActiveTrigger] = useState<'onClick' | 'onHover' | 'onChange'>('onClick');
@@ -178,6 +181,58 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <span>Target Viewport</span>
               <span className="font-mono text-white capitalize">{project.viewport}</span>
             </div>
+          </div>
+
+          {/* Keyboard Shortcuts & Hotkeys Configuration */}
+          <div className="pt-4 border-t border-zinc-800 space-y-3" data-testid="settings-keyboard-shortcuts">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                <Keyboard size={13} className="text-blue-400" />
+                <span>Hotkeys & Shortcuts</span>
+              </div>
+              <span className="text-[10px] font-mono text-zinc-500">Settings</span>
+            </div>
+
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              Define custom key combinations for common operations like deleting elements, previewing, and saving.
+            </p>
+
+            <div className="divide-y divide-zinc-850 rounded-xl border border-zinc-800 bg-zinc-900/40 text-xs">
+              <div className="p-2 flex items-center justify-between">
+                <span className="text-zinc-300">Delete Element</span>
+                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                  {project.customShortcuts?.deleteElement || 'Delete'}
+                </kbd>
+              </div>
+              <div className="p-2 flex items-center justify-between">
+                <span className="text-zinc-300">Preview Application</span>
+                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                  {project.customShortcuts?.previewApp || 'Ctrl+P'}
+                </kbd>
+              </div>
+              <div className="p-2 flex items-center justify-between">
+                <span className="text-zinc-300">Save Project</span>
+                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                  {project.customShortcuts?.saveProject || 'Ctrl+S'}
+                </kbd>
+              </div>
+              <div className="p-2 flex items-center justify-between">
+                <span className="text-zinc-300">Quick Add Menu</span>
+                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                  {project.customShortcuts?.quickAdd || 'Ctrl+A'}
+                </kbd>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenShortcutsModal}
+              className="w-full py-2 px-3 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-medium flex items-center justify-center gap-2 transition cursor-pointer shadow-xs active:scale-[0.98]"
+              data-testid="open-shortcuts-settings-btn"
+            >
+              <Keyboard size={13} className="text-blue-400" />
+              <span>Configure Custom Hotkeys</span>
+            </button>
           </div>
 
           <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 text-[11px] text-zinc-400 leading-relaxed">
@@ -568,11 +623,11 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               selectedElement.type === 'heading') && (
               <div className="pt-3 border-t border-zinc-800 space-y-3 bg-zinc-900/40 p-3 rounded-xl border border-zinc-800/80">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
-                    <Zap size={13} className="text-amber-400" />
+                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-200 flex items-center gap-1.5">
+                    <Link size={13} className="text-blue-400" />
                     <span>When Clicked / Link To</span>
                   </label>
-                  <span className="text-[10px] text-zinc-500 font-mono">1-Click Action</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">Click interaction</span>
                 </div>
 
                 <div>
@@ -2166,8 +2221,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded-full bg-blue-600/30 text-blue-400 border border-blue-500/40 text-[10px] font-mono flex items-center justify-center font-bold">
-                            {idx + 1}
+                          <span className="text-[11px] font-mono text-zinc-400 font-medium">
+                            {idx + 1}.
                           </span>
                           <span className="font-semibold text-zinc-200 capitalize">
                             {step.type === 'openModal' ? 'Open Popup' : step.type === 'submitForm' ? 'Submit Form' : step.type}

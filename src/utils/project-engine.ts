@@ -8,7 +8,8 @@ import {
   Project,
   ActionStep,
   ActionCondition,
-  ComponentInteraction
+  ComponentInteraction,
+  AlignmentType
 } from '../types/editor';
 
 export function createNewElement(type: ComponentType): CanvasElement {
@@ -1291,4 +1292,100 @@ export function exportProjectToHtml(project: Project): string {
   </script>
 </body>
 </html>`;
+}
+
+// ----------------------------------------------------
+// CANVAS & ELEMENT ALIGNMENT PRECISION ENGINE
+// ----------------------------------------------------
+
+export function getAlignedElementStyles(
+  currentStyles: ComponentStyles = {}, 
+  alignment: AlignmentType
+): ComponentStyles {
+  const styles: ComponentStyles = { ...currentStyles };
+
+  switch (alignment) {
+    case 'center-h':
+      styles.textAlign = 'center';
+      styles.alignSelf = 'center';
+      styles.marginMode = 'individual';
+      styles.marginLeft = 'auto';
+      styles.marginRight = 'auto';
+      break;
+
+    case 'center-v':
+      styles.alignSelf = 'center';
+      styles.marginMode = 'individual';
+      styles.marginTop = 'auto';
+      styles.marginBottom = 'auto';
+      break;
+
+    case 'center-both':
+      styles.textAlign = 'center';
+      styles.alignSelf = 'center';
+      styles.marginMode = 'individual';
+      styles.marginLeft = 'auto';
+      styles.marginRight = 'auto';
+      styles.marginTop = 'auto';
+      styles.marginBottom = 'auto';
+      break;
+
+    case 'anchor-left':
+      styles.textAlign = 'left';
+      styles.alignSelf = 'start';
+      styles.marginMode = 'individual';
+      styles.marginLeft = '0px';
+      styles.marginRight = 'auto';
+      break;
+
+    case 'anchor-right':
+      styles.textAlign = 'right';
+      styles.alignSelf = 'end';
+      styles.marginMode = 'individual';
+      styles.marginLeft = 'auto';
+      styles.marginRight = '0px';
+      break;
+
+    case 'anchor-top':
+      styles.alignSelf = 'start';
+      styles.marginMode = 'individual';
+      styles.marginTop = '0px';
+      styles.marginBottom = 'auto';
+      break;
+
+    case 'anchor-bottom':
+      styles.alignSelf = 'end';
+      styles.marginMode = 'individual';
+      styles.marginTop = 'auto';
+      styles.marginBottom = '0px';
+      break;
+
+    case 'full-width':
+      styles.width = 'full';
+      styles.alignSelf = 'stretch';
+      styles.marginMode = 'individual';
+      styles.marginLeft = '0px';
+      styles.marginRight = '0px';
+      break;
+
+    case 'distribute-h':
+    case 'distribute-v':
+    case 'space-between':
+      styles.marginMode = 'linked';
+      styles.margin = 'md';
+      styles.alignSelf = 'center';
+      break;
+  }
+
+  return styles;
+}
+
+export function alignElements(
+  elements: CanvasElement[], 
+  alignment: AlignmentType
+): CanvasElement[] {
+  return elements.map((el) => ({
+    ...el,
+    styles: getAlignedElementStyles(el.styles, alignment),
+  }));
 }

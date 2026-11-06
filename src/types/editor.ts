@@ -62,6 +62,7 @@ export interface ComponentStyles {
   height?: 'auto' | 'full' | 'sm' | 'md' | 'lg' | 'custom';
   customHeight?: string;
   minHeight?: string;
+  alignSelf?: 'auto' | 'start' | 'center' | 'end' | 'stretch';
 
   // Colors & Backgrounds
   textColor?: string;
@@ -157,6 +158,19 @@ export type MotionEffect =
 
 export type MotionCategory = 'entrance' | 'exit' | 'emphasis';
 export type MotionPresetView = 'pairs' | 'all' | 'entrance' | 'exit' | 'emphasis';
+
+export type AlignmentType = 
+  | 'center-h' 
+  | 'center-v' 
+  | 'center-both' 
+  | 'anchor-left' 
+  | 'anchor-right' 
+  | 'anchor-top' 
+  | 'anchor-bottom' 
+  | 'distribute-h' 
+  | 'distribute-v' 
+  | 'space-between'
+  | 'full-width';
 
 export interface MotionPresetItem {
   id: MotionEffect;
@@ -310,6 +324,8 @@ export interface Project {
   // Data Mode & Backend Studio
   collections?: DataCollection[];
   variables?: AppVariable[];
+  // Global Keyboard Shortcuts Settings Configuration
+  customShortcuts?: Record<string, string>;
   // Legacy backward-compatibility
   elements?: CanvasElement[];
 }

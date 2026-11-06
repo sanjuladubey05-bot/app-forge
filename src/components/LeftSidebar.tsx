@@ -34,7 +34,20 @@ import {
   Edit2,
   Check,
   FolderPlus,
-  Compass
+  Compass,
+  X,
+  Tag,
+  AlignHorizontalJustifyCenter,
+  AlignVerticalJustifyCenter,
+  Crosshair,
+  AlignHorizontalJustifyStart,
+  AlignHorizontalJustifyEnd,
+  AlignVerticalJustifyStart,
+  AlignVerticalJustifyEnd,
+  StretchHorizontal,
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
+  AlignJustify
 } from 'lucide-react';
 import { 
   CanvasElement, 
@@ -42,7 +55,8 @@ import {
   LeftPanelTab, 
   Page, 
   PageTransition, 
-  Project 
+  Project,
+  AlignmentType
 } from '../types/editor';
 import { getActivePage } from '../utils/project-engine';
 import { PREBUILT_SECTIONS, PrebuiltSection, SectionCategory } from '../utils/section-library';
@@ -55,6 +69,7 @@ interface LeftSidebarProps {
   onSelectElement: (id: string | null) => void;
   onAddComponent: (type: ComponentType, customProps?: Record<string, any>) => void;
   onAddSection?: (elements: CanvasElement[]) => void;
+  onAlignElements?: (type: AlignmentType) => void;
   // Multi-page handlers
   onSwitchPage: (pageId: string) => void;
   onCreatePage: (name: string, path?: string, transition?: PageTransition) => void;
@@ -97,8 +112,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onRenameElement,
   onGroupSelected,
   onUngroupContainer,
+  onAlignElements,
 }) => {
   const [componentSearch, setComponentSearch] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string>('all');
+  const [focusedItemIndex, setFocusedItemIndex] = useState<number>(0);
   const [sectionSearch, setSectionSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [newPageName, setNewPageName] = useState('');
@@ -123,38 +141,122 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       id: 'containers',
       name: 'Containers & Layout',
       items: [
-        { type: 'container' as ComponentType, title: 'Flex Container', desc: 'Auto-layout wrapper for grouping children', icon: Box },
-        { type: 'card' as ComponentType, title: 'Card Container', desc: 'Surface with border, padding and elevation', icon: CreditCard },
-        { type: 'divider' as ComponentType, title: 'Divider Line', desc: 'Horizontal separation rule', icon: Minus },
+        { 
+          type: 'container' as ComponentType, 
+          title: 'Flex Container', 
+          desc: 'Auto-layout wrapper for grouping children', 
+          icon: Box,
+          tags: ['container', 'flex', 'layout', 'box', 'stack', 'wrapper', 'group', 'div']
+        },
+        { 
+          type: 'card' as ComponentType, 
+          title: 'Card Container', 
+          desc: 'Surface with border, padding and elevation', 
+          icon: CreditCard,
+          tags: ['card', 'surface', 'box', 'panel', 'container', 'layout', 'elevation']
+        },
+        { 
+          type: 'divider' as ComponentType, 
+          title: 'Divider Line', 
+          desc: 'Horizontal separation rule', 
+          icon: Minus,
+          tags: ['divider', 'line', 'rule', 'separator', 'border', 'hr', 'layout']
+        },
       ],
     },
     {
       id: 'typography',
       name: 'Typography',
       items: [
-        { type: 'heading' as ComponentType, title: 'Heading Block', desc: 'H1, H2, or H3 with optional subtext', icon: Heading1 },
-        { type: 'text' as ComponentType, title: 'Paragraph Text', desc: 'Formatted body copy and descriptions', icon: Type },
-        { type: 'badge' as ComponentType, title: 'Status Badge', desc: 'Pill tag for tags or statuses', icon: CheckSquare },
+        { 
+          type: 'heading' as ComponentType, 
+          title: 'Heading Block', 
+          desc: 'H1, H2, or H3 with optional subtext', 
+          icon: Heading1,
+          tags: ['heading', 'title', 'h1', 'h2', 'h3', 'text', 'typography', 'header']
+        },
+        { 
+          type: 'text' as ComponentType, 
+          title: 'Paragraph Text', 
+          desc: 'Formatted body copy and descriptions', 
+          icon: Type,
+          tags: ['text', 'paragraph', 'body', 'copy', 'typography', 'content', 'p']
+        },
+        { 
+          type: 'badge' as ComponentType, 
+          title: 'Status Badge', 
+          desc: 'Pill tag for tags or statuses', 
+          icon: CheckSquare,
+          tags: ['badge', 'tag', 'pill', 'status', 'chip', 'label']
+        },
       ],
     },
     {
       id: 'forms',
       name: 'Forms & Inputs',
       items: [
-        { type: 'button' as ComponentType, title: 'Action Button', desc: 'Interactive button with action pipeline', icon: Square },
-        { type: 'input' as ComponentType, title: 'Text Input', desc: 'Single-line field with label', icon: TextCursorInput },
-        { type: 'textarea' as ComponentType, title: 'Textarea Field', desc: 'Multi-line message or bio field', icon: FileText },
-        { type: 'select' as ComponentType, title: 'Dropdown Select', desc: 'Option list selector', icon: ListFilter },
-        { type: 'toggle' as ComponentType, title: 'Switch Toggle', desc: 'Boolean switch control', icon: ToggleLeft },
+        { 
+          type: 'button' as ComponentType, 
+          title: 'Action Button', 
+          desc: 'Interactive button with action pipeline', 
+          icon: Square,
+          tags: ['button', 'cta', 'click', 'action', 'press', 'interactive', 'submit']
+        },
+        { 
+          type: 'input' as ComponentType, 
+          title: 'Text Input', 
+          desc: 'Single-line field with label', 
+          icon: TextCursorInput,
+          tags: ['input', 'form', 'text', 'field', 'email', 'entry', 'box']
+        },
+        { 
+          type: 'textarea' as ComponentType, 
+          title: 'Textarea Field', 
+          desc: 'Multi-line message or bio field', 
+          icon: FileText,
+          tags: ['textarea', 'message', 'form', 'multi-line', 'bio', 'field', 'comments']
+        },
+        { 
+          type: 'select' as ComponentType, 
+          title: 'Dropdown Select', 
+          desc: 'Option list selector', 
+          icon: ListFilter,
+          tags: ['select', 'dropdown', 'picker', 'form', 'options', 'list', 'menu']
+        },
+        { 
+          type: 'toggle' as ComponentType, 
+          title: 'Switch Toggle', 
+          desc: 'Boolean switch control', 
+          icon: ToggleLeft,
+          tags: ['toggle', 'switch', 'boolean', 'form', 'checkbox', 'binary', 'active']
+        },
       ],
     },
     {
       id: 'data',
       name: 'Data & Display',
       items: [
-        { type: 'metric' as ComponentType, title: 'Metric KPI Card', desc: 'Counter with trend percentage', icon: BarChart3 },
-        { type: 'image' as ComponentType, title: 'Image Box', desc: 'Responsive media element', icon: ImageIcon },
-        { type: 'table' as ComponentType, title: 'Data Table', desc: 'Structured columns and records', icon: Table },
+        { 
+          type: 'metric' as ComponentType, 
+          title: 'Metric KPI Card', 
+          desc: 'Counter with trend percentage', 
+          icon: BarChart3,
+          tags: ['metric', 'kpi', 'stat', 'analytics', 'counter', 'number', 'data', 'chart']
+        },
+        { 
+          type: 'image' as ComponentType, 
+          title: 'Image Box', 
+          desc: 'Responsive media element', 
+          icon: ImageIcon,
+          tags: ['image', 'photo', 'picture', 'media', 'asset', 'illustration', 'banner']
+        },
+        { 
+          type: 'table' as ComponentType, 
+          title: 'Data Table', 
+          desc: 'Structured columns and records', 
+          icon: Table,
+          tags: ['table', 'grid', 'data', 'records', 'rows', 'columns', 'spreadsheet']
+        },
       ],
     },
   ];
@@ -370,69 +472,179 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   Library
                 </span>
               </div>
-              <div className="relative">
-                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                <input
-                  type="text"
-                  placeholder="Search elements..."
-                  value={componentSearch}
-                  onChange={(e) => setComponentSearch(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
-                />
+              
+              {/* Search Filter Component with Clear Button */}
+              <div className="space-y-2 mt-2">
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or tag (e.g. flex, cta, stat)..."
+                    value={componentSearch}
+                    onChange={(e) => setComponentSearch(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
+                    data-testid="element-search-input"
+                  />
+                  {componentSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setComponentSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition p-0.5 cursor-pointer"
+                      title="Clear search"
+                      data-testid="clear-search-btn"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Category & Tag Filter Pills */}
+                <div className="flex flex-wrap gap-1" data-testid="element-tag-filters">
+                  {[
+                    { id: 'all', label: 'All' },
+                    { id: 'layout', label: 'Layout' },
+                    { id: 'typography', label: 'Text' },
+                    { id: 'forms', label: 'Forms' },
+                    { id: 'data', label: 'Data' },
+                  ].map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => setSelectedTag(tag.id)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-medium transition cursor-pointer ${
+                        selectedTag === tag.id
+                          ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                          : 'bg-zinc-900 border border-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                      }`}
+                      data-testid={`tag-filter-${tag.id}`}
+                    >
+                      {tag.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-4">
-              {componentSections.map((sec) => {
-                const items = sec.items.filter(
-                  (i) =>
-                    i.title.toLowerCase().includes(componentSearch.toLowerCase()) ||
-                    i.desc.toLowerCase().includes(componentSearch.toLowerCase())
-                );
-                if (items.length === 0) return null;
+            {/* Filtered Components List */}
+            {(() => {
+              const q = componentSearch.trim().toLowerCase();
+              const matchesTag = (tags: string[], sectionId: string) => {
+                if (selectedTag === 'all') return true;
+                if (selectedTag === 'layout') return sectionId === 'containers' || tags.includes('layout');
+                if (selectedTag === 'typography') return sectionId === 'typography' || tags.includes('typography') || tags.includes('text');
+                if (selectedTag === 'forms') return sectionId === 'forms' || tags.includes('form') || tags.includes('button');
+                if (selectedTag === 'data') return sectionId === 'data' || tags.includes('data');
+                return tags.includes(selectedTag);
+              };
 
+              const filteredSections = componentSections.map((sec) => {
+                const items = sec.items.filter((item) => {
+                  const tagOk = matchesTag(item.tags, sec.id);
+                  if (!tagOk) return false;
+                  if (!q) return true;
+                  const matchTitle = item.title.toLowerCase().includes(q);
+                  const matchDesc = item.desc.toLowerCase().includes(q);
+                  const matchTag = item.tags.some((t) => t.toLowerCase().includes(q));
+                  return matchTitle || matchDesc || matchTag;
+                });
+                return { ...sec, items };
+              }).filter((sec) => sec.items.length > 0);
+
+              const totalCount = filteredSections.reduce((acc, sec) => acc + sec.items.length, 0);
+
+              if (totalCount === 0) {
                 return (
-                  <div key={sec.id} className="space-y-1.5">
-                    <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-1">
-                      {sec.name}
-                    </span>
-                    <div className="grid grid-cols-1 gap-1.5">
-                      {items.map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <div
-                            key={item.type}
-                            onClick={() => onAddComponent(item.type)}
-                            className="group flex items-center justify-between p-2 rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800/80 hover:border-zinc-700 transition cursor-pointer shadow-xs active:scale-[0.98]"
-                            title="Click to add to canvas"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-7 h-7 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-blue-400 group-hover:border-blue-500/30 transition shrink-0">
-                                <Icon size={14} />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
-                                  {item.title}
-                                </div>
-                                <div className="text-[10px] text-zinc-400 truncate">
-                                  {item.desc}
-                                </div>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-blue-600 text-white transition shrink-0"
-                            >
-                              <Plus size={11} />
-                            </button>
-                          </div>
-                        );
-                      })}
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-2 text-zinc-400">
+                    <div className="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                      <Search size={16} />
                     </div>
+                    <div className="text-xs font-medium text-zinc-200">
+                      No matching elements
+                    </div>
+                    <p className="text-[11px] text-zinc-500 max-w-[200px]">
+                      No elements match "{componentSearch || selectedTag}". Try searching for button, flex, input, or table.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setComponentSearch('');
+                        setSelectedTag('all');
+                      }}
+                      className="mt-1 px-3 py-1 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-xs text-blue-400 hover:text-blue-300 transition cursor-pointer"
+                      data-testid="clear-filters-empty-btn"
+                    >
+                      Clear Filters
+                    </button>
                   </div>
                 );
-              })}
-            </div>
+              }
+
+              return (
+                <div className="flex-1 overflow-y-auto p-2.5 space-y-4" data-testid="component-items-list">
+                  {filteredSections.map((sec) => (
+                    <div key={sec.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                          {sec.name}
+                        </span>
+                        <span className="text-[9px] font-mono text-zinc-500">
+                          {sec.items.length}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {sec.items.map((item) => {
+                          const Icon = item.icon;
+                          return (
+                            <div
+                              key={item.type}
+                              onClick={() => onAddComponent(item.type)}
+                              className="group flex items-start justify-between p-2 rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800/80 hover:border-zinc-700 transition cursor-pointer shadow-xs active:scale-[0.98]"
+                              title={`Click to add ${item.title} to canvas`}
+                              data-testid={`add-element-${item.type}`}
+                            >
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                <div className="w-7 h-7 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-blue-400 group-hover:border-blue-500/30 transition shrink-0 mt-0.5">
+                                  <Icon size={14} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
+                                    {item.title}
+                                  </div>
+                                  <div className="text-[10px] text-zinc-400 truncate">
+                                    {item.desc}
+                                  </div>
+                                  {/* Tags Chips */}
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {item.tags.slice(0, 3).map((tg) => (
+                                      <span
+                                        key={tg}
+                                        className={`text-[9px] font-mono px-1 py-0.2 rounded border ${
+                                          q && tg.toLowerCase().includes(q)
+                                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 font-medium'
+                                            : 'bg-zinc-950 text-zinc-500 border-zinc-800/80'
+                                        }`}
+                                      >
+                                        #{tg}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-blue-600 text-white transition shrink-0 mt-1"
+                              >
+                                <Plus size={11} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -462,7 +674,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 />
               </div>
 
-              {/* Category Filter Pills */}
+              {/* Category Segmented Controls */}
               <div className="flex flex-wrap gap-1">
                 {[
                   { id: 'all', label: 'All' },
@@ -476,10 +688,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     key={cat.id}
                     type="button"
                     onClick={() => setActiveCategory(cat.id)}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition cursor-pointer ${
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition cursor-pointer ${
                       activeCategory === cat.id
-                        ? 'bg-blue-600 text-white font-semibold shadow-xs'
-                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                        ? 'bg-zinc-800 text-white font-semibold'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                     }`}
                   >
                     {cat.label}
@@ -500,27 +712,26 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               }).map((sec) => (
                 <div
                   key={sec.id}
-                  className="p-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800/60 hover:border-zinc-700 transition shadow-xs flex flex-col justify-between group space-y-2.5"
+                  className="p-3 rounded-lg border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-900 hover:border-zinc-700 transition flex flex-col justify-between group space-y-2"
                 >
                   <div>
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">
+                      <span className="text-xs font-medium text-zinc-200 group-hover:text-white">
                         {sec.name}
                       </span>
                       {sec.badge && (
-                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/30">
+                        <span className="text-[10px] font-mono text-zinc-500">
                           {sec.badge}
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-zinc-400 leading-snug line-clamp-2">
+                    <div className="text-[11px] text-zinc-400 leading-snug line-clamp-2">
                       {sec.description}
                     </div>
-                    <div className="mt-1.5 flex items-center gap-1.5 text-[9px] font-mono text-zinc-500">
-                      <span className="px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-400">
-                        {sec.categoryLabel}
-                      </span>
-                      <span>• Editable elements</span>
+                    <div className="mt-2 flex items-center gap-1.5 text-[10px] font-mono text-zinc-500">
+                      <span className="text-zinc-400 font-sans">{sec.categoryLabel}</span>
+                      <span>·</span>
+                      <span>{sec.elements.length} elements</span>
                     </div>
                   </div>
 

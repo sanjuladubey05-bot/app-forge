@@ -1,18 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Trophy, 
   CheckCircle2, 
   Circle, 
-  ChevronRight, 
-  Sparkles, 
   X, 
-  RotateCcw, 
   Minimize2, 
   Maximize2,
-  HelpCircle,
   ArrowRight,
-  Zap,
-  Play
+  Play,
+  Compass
 } from 'lucide-react';
 import { CanvasElement, LeftPanelTab, Project } from '../types/editor';
 
@@ -44,17 +39,15 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
   onCreateProfilePageShortcut,
 }) => {
   const [isDismissed, setIsDismissed] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [previewCompletedOnce, setPreviewCompletedOnce] = useState(false);
 
-  // Mark preview as completed when isPreviewing becomes true
   useEffect(() => {
     if (isPreviewing) {
       setPreviewCompletedOnce(true);
     }
   }, [isPreviewing]);
 
-  // All elements across all pages
   const allElements: CanvasElement[] = project.pages.flatMap((p) => p.elements);
 
   // Check 1: Button exists
@@ -69,11 +62,9 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
   // Check 3: Button linked to Profile
   const hasButtonLinkedToProfile = allElements.some((el) => {
     if (el.type !== 'button') return false;
-    // Check whenClicked prop
     if (el.props.whenClicked === 'openPage' && profilePage && el.props.targetPageId === profilePage.id) {
       return true;
     }
-    // Check interactions
     if (el.interactions && profilePage) {
       const clickInter = el.interactions.find((i) => i.trigger === 'onClick');
       if (clickInter?.steps.some((s) => s.type === 'navigate' && s.targetPageId === profilePage.id)) {
@@ -109,8 +100,8 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
     {
       id: 'step_button',
       title: '1. Add your first Button',
-      description: 'Add an interactive Action Button to your canvas screen.',
-      hint: 'Click "Components" tab on the left rail and click "Action Button".',
+      description: 'Add an interactive action button to the canvas.',
+      hint: 'In the left rail, open "Components" and click "Action Button".',
       isComplete: hasButton,
       actionLabel: 'Open Components',
       actionTab: 'components',
@@ -118,8 +109,8 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
     {
       id: 'step_profile',
       title: '2. Create a "Profile" Screen',
-      description: 'Add a new screen named Profile to build a multi-page app.',
-      hint: 'Click "Pages" tab on the left, type "Profile" in the name field, and click "+".',
+      description: 'Add a second screen named Profile to start multi-page navigation.',
+      hint: 'In the left rail, open "Pages", type "Profile", and click "Create".',
       isComplete: hasProfilePage,
       actionLabel: 'Open Pages',
       actionTab: 'pages',
@@ -127,15 +118,15 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
     {
       id: 'step_link',
       title: '3. Connect Button to Profile',
-      description: 'Link your button so clicking it navigates to the Profile screen.',
-      hint: 'Select the Button, go to "Props" on right, set "When Clicked" to "Open Page" and choose "Profile".',
+      description: 'Link your button so tapping it opens the Profile screen in preview.',
+      hint: 'Select the Button, open "Props" on the right, and set When Clicked to "Open Page" -> "Profile".',
       isComplete: hasButtonLinkedToProfile,
     },
     {
       id: 'step_section',
       title: '4. Add a Prebuilt Section',
-      description: 'Drop in a ready-made responsive section from the Section Library.',
-      hint: 'Click the "Sections" tab on the left and click "Add to Canvas" on any section.',
+      description: 'Insert an editable layout section from the Section Library.',
+      hint: 'Open the "Sections" tab on the left and click "Add to Canvas".',
       isComplete: hasSectionOrComplex,
       actionLabel: 'Browse Sections',
       actionTab: 'sections',
@@ -143,15 +134,15 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
     {
       id: 'step_design',
       title: '5. Customize Design & Motion',
-      description: 'Tweak colors, border radius, or pick entrance animations.',
-      hint: 'Select an element, open the "Design" or "Motion" tab, and choose your favorite style.',
+      description: 'Adjust sizing, colors, radius, or pick entrance motion.',
+      hint: 'Select an element and customize styles in the Design or Motion tabs.',
       isComplete: hasCustomizedDesign,
     },
     {
       id: 'step_preview',
       title: '6. Test Interactive Prototype',
-      description: 'Launch Preview mode and click your button to navigate between screens.',
-      hint: 'Click the "Preview" button in the top toolbar to test your interactive application live.',
+      description: 'Run live interactive preview to test page switching and actions.',
+      hint: 'Click "Preview" in the top bar to test live clicks.',
       isComplete: hasPreviewed,
       actionLabel: 'Launch Preview',
     },
@@ -161,7 +152,6 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
   const progressPercent = Math.round((completedCount / quests.length) * 100);
   const allComplete = completedCount === quests.length;
 
-  // Active quest is the first incomplete quest
   const activeQuestIndex = quests.findIndex((q) => !q.isComplete);
   const activeQuest = activeQuestIndex !== -1 ? quests[activeQuestIndex] : null;
 
@@ -169,45 +159,44 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
     return (
       <button
         onClick={() => setIsDismissed(false)}
-        className="fixed bottom-12 right-6 z-40 bg-zinc-900 border border-zinc-700/80 hover:border-blue-500 shadow-xl rounded-full px-3.5 py-2 flex items-center gap-2 text-xs text-white transition cursor-pointer"
-        title="Resume Guided Missions"
+        className="fixed bottom-6 right-6 lg:right-84 z-40 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 shadow-lg rounded-lg px-3 py-1.5 flex items-center gap-2 text-xs text-zinc-300 transition cursor-pointer"
+        title="Show onboarding guide"
       >
-        <Trophy size={14} className="text-amber-400" />
-        <span className="font-semibold">Missions: {completedCount}/{quests.length}</span>
+        <Compass size={13} className="text-zinc-400" />
+        <span>Guide · {completedCount}/{quests.length}</span>
       </button>
     );
   }
 
   if (isMinimized) {
     return (
-      <div className="fixed bottom-12 right-6 z-40 bg-zinc-950/95 border border-zinc-800 shadow-2xl rounded-2xl p-3 flex items-center gap-3 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
-            <Trophy size={16} className={allComplete ? 'text-amber-400' : 'text-blue-400'} />
+      <div className="hidden sm:flex fixed bottom-6 right-6 lg:right-84 z-40 bg-zinc-900 border border-zinc-800 shadow-xl rounded-xl p-3 items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded-md bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
+            <Compass size={13} />
           </div>
           <div>
-            <div className="text-xs font-bold text-white flex items-center gap-1.5">
-              <span>Quick Start Quest</span>
-              <span className="text-[10px] font-mono text-zinc-400">({completedCount}/6)</span>
+            <div className="text-xs font-medium text-zinc-200">
+              Guide · {completedCount} of {quests.length}
             </div>
-            <div className="text-[10px] text-zinc-400 truncate max-w-[160px]">
-              {allComplete ? 'All missions completed!' : activeQuest?.title}
+            <div className="text-[11px] text-zinc-500 truncate max-w-[170px]">
+              {allComplete ? 'All steps completed' : activeQuest?.title}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 border-l border-zinc-800 pl-2">
           <button
             onClick={() => setIsMinimized(false)}
-            className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition cursor-pointer"
-            title="Expand Missions"
+            className="p-1 text-zinc-400 hover:text-white rounded transition"
+            title="Expand guide"
           >
             <Maximize2 size={13} />
           </button>
           <button
             onClick={() => setIsDismissed(true)}
-            className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition cursor-pointer"
-            title="Dismiss"
+            className="p-1 text-zinc-400 hover:text-white rounded transition"
+            title="Dismiss guide"
           >
             <X size={13} />
           </button>
@@ -217,116 +206,102 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
   }
 
   return (
-    <div className="fixed bottom-12 right-6 z-40 w-96 bg-zinc-950/95 border border-zinc-800 shadow-2xl rounded-2xl overflow-hidden backdrop-blur-lg select-none transition-all">
+    <div className="hidden sm:block fixed bottom-6 right-6 lg:right-84 z-40 w-92 bg-zinc-900 border border-zinc-800 shadow-2xl rounded-xl overflow-hidden select-none font-sans">
       {/* Header */}
-      <div className="p-3.5 bg-gradient-to-r from-blue-950/60 via-zinc-900 to-zinc-950 border-b border-zinc-800 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-            <Trophy size={15} className={allComplete ? 'text-amber-300' : 'text-white'} />
+      <div className="p-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900">
+        <div>
+          <div className="text-xs font-semibold text-zinc-100 flex items-center gap-2">
+            <span>Onboarding Guide</span>
+            <span className="text-[11px] text-zinc-500 font-normal">
+              · {completedCount} of {quests.length}
+            </span>
           </div>
-          <div>
-            <div className="text-xs font-bold text-white flex items-center gap-1.5">
-              <span>AppForge Play-to-Build</span>
-              <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 text-[9px] font-mono font-semibold">
-                QUICK QUEST
-              </span>
-            </div>
-            <div className="text-[10px] text-zinc-400">
-              Zero coding • Complete steps to build your first app
-            </div>
+          <div className="text-[11px] text-zinc-400 mt-0.5">
+            Essential steps to build and connect your app
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => setIsMinimized(true)}
-            className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition cursor-pointer"
+            className="p-1 text-zinc-400 hover:text-zinc-200 rounded transition cursor-pointer"
             title="Minimize"
           >
             <Minimize2 size={13} />
           </button>
           <button
             onClick={() => setIsDismissed(true)}
-            className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition cursor-pointer"
-            title="Hide Missions"
+            className="p-1 text-zinc-400 hover:text-zinc-200 rounded transition cursor-pointer"
+            title="Dismiss"
           >
             <X size={13} />
           </button>
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="px-4 py-2.5 bg-zinc-900/60 border-b border-zinc-800/80 flex items-center justify-between gap-3">
-        <div className="flex-1">
-          <div className="flex items-center justify-between text-[11px] mb-1">
-            <span className="text-zinc-300 font-medium">Mission Progress</span>
-            <span className="font-mono font-bold text-blue-400">{progressPercent}% ({completedCount}/{quests.length})</span>
-          </div>
-          <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500 rounded-full"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        </div>
+      {/* Thin Progress hairline */}
+      <div className="w-full h-1 bg-zinc-800">
+        <div 
+          className="h-full bg-zinc-400 transition-all duration-300"
+          style={{ width: `${progressPercent}%` }}
+        />
       </div>
 
       {/* Quest Steps List */}
       <div className="max-h-72 overflow-y-auto p-3 space-y-2">
-        {quests.map((quest, idx) => {
+        {quests.map((quest) => {
           const isActive = !allComplete && activeQuest?.id === quest.id;
           return (
             <div
               key={quest.id}
-              className={`p-2.5 rounded-xl border transition ${
+              className={`p-2.5 rounded-lg border transition ${
                 quest.isComplete
-                  ? 'bg-zinc-900/40 border-zinc-800/80 text-zinc-400'
+                  ? 'bg-zinc-950/40 border-zinc-800/60 text-zinc-500'
                   : isActive
-                  ? 'bg-blue-950/30 border-blue-500/50 text-zinc-200 ring-1 ring-blue-500/30'
-                  : 'bg-zinc-900/20 border-zinc-900 text-zinc-500 opacity-60'
+                  ? 'bg-zinc-950 border-zinc-700 text-zinc-200'
+                  : 'bg-zinc-950/20 border-zinc-900 text-zinc-600'
               }`}
             >
               <div className="flex items-start gap-2.5">
                 <div className="mt-0.5 shrink-0">
                   {quest.isComplete ? (
-                    <CheckCircle2 size={15} className="text-emerald-400" />
+                    <CheckCircle2 size={14} className="text-zinc-400" />
                   ) : isActive ? (
-                    <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                    <Circle size={14} className="text-zinc-200 fill-zinc-200/20" />
                   ) : (
-                    <Circle size={15} className="text-zinc-600" />
+                    <Circle size={14} className="text-zinc-700" />
                   )}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <span className={`text-xs font-semibold ${quest.isComplete ? 'line-through text-zinc-400' : isActive ? 'text-white font-bold' : 'text-zinc-400'}`}>
+                    <span className={`text-xs ${quest.isComplete ? 'line-through text-zinc-500' : isActive ? 'font-medium text-zinc-100' : 'text-zinc-500'}`}>
                       {quest.title}
                     </span>
                     {quest.isComplete && (
-                      <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded font-semibold">
-                        DONE
+                      <span className="text-[10px] text-zinc-500">
+                        Complete
                       </span>
                     )}
                   </div>
 
                   {isActive && (
-                    <div className="mt-1 space-y-1.5">
-                      <p className="text-[11px] text-zinc-300 leading-tight">
+                    <div className="mt-1.5 space-y-2">
+                      <p className="text-[11px] text-zinc-400 leading-relaxed">
                         {quest.description}
                       </p>
-                      <div className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] text-amber-300/90 flex items-start gap-1">
-                        <Sparkles size={11} className="shrink-0 mt-0.5 text-amber-400" />
-                        <span>{quest.hint}</span>
+                      <div className="p-2 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300">
+                        {quest.hint}
                       </div>
 
                       {quest.actionTab && onNavigateTab && (
                         <button
                           type="button"
                           onClick={() => onNavigateTab(quest.actionTab!)}
-                          className="mt-1 inline-flex items-center gap-1 px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold transition cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition cursor-pointer"
                         >
                           <span>{quest.actionLabel}</span>
-                          <ArrowRight size={10} />
+                          <ArrowRight size={11} />
                         </button>
                       )}
 
@@ -334,9 +309,9 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
                         <button
                           type="button"
                           onClick={onOpenPreview}
-                          className="mt-1 inline-flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold transition cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition cursor-pointer"
                         >
-                          <Play size={10} />
+                          <Play size={11} />
                           <span>{quest.actionLabel}</span>
                         </button>
                       )}
@@ -349,46 +324,26 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
         })}
       </div>
 
-      {/* Footer / All Complete Celebration */}
-      {allComplete ? (
-        <div className="p-3 bg-gradient-to-r from-emerald-950/40 via-zinc-900 to-zinc-950 border-t border-emerald-500/30 flex flex-col items-center text-center space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-            <Trophy size={14} className="text-amber-400 animate-bounce" />
-            <span>🎉 All 6 Missions Completed!</span>
-          </div>
-          <p className="text-[10px] text-zinc-400 max-w-xs">
-            Congratulations! You built and connected a multi-page interactive application completely without code.
-          </p>
-          <div className="flex items-center gap-2 pt-1">
+      {/* Completion message */}
+      {allComplete && (
+        <div className="p-3 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between text-xs">
+          <span className="text-zinc-300">All 6 steps completed.</span>
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setPreviewCompletedOnce(false);
-                setIsMinimized(true);
-              }}
-              className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition cursor-pointer"
+              onClick={() => setIsMinimized(true)}
+              className="text-zinc-500 hover:text-zinc-300 cursor-pointer"
             >
               Minimize
             </button>
             {onOpenPreview && (
               <button
                 onClick={onOpenPreview}
-                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/20 transition cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium cursor-pointer"
               >
-                <Play size={11} />
-                <span>Play Live Preview</span>
+                Open Preview
               </button>
             )}
           </div>
-        </div>
-      ) : (
-        <div className="p-2.5 bg-zinc-950 border-t border-zinc-800 flex items-center justify-between text-[10px] text-zinc-500">
-          <span>Tip: Complete each step to master AppForge.</span>
-          <button
-            onClick={() => setIsMinimized(true)}
-            className="hover:text-zinc-300 cursor-pointer"
-          >
-            Hide for now
-          </button>
         </div>
       )}
     </div>

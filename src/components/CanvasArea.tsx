@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   CanvasElement, 
   ComponentType, 
@@ -19,6 +19,7 @@ import {
   Box,
   FolderPlus
 } from 'lucide-react';
+import { QuickAddRadialMenu } from './QuickAddRadialMenu';
 
 interface CanvasAreaProps {
   activePage: Page;
@@ -51,6 +52,99 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   canvasBg,
   canvasPadding,
 }) => {
+  // Mobile Circular 'Quick Add' Floating Action Menu state & long-press detection
+  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [quickAddPos, setQuickAddPos] = useState<{ x: number; y: number } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  const triggerQuickAdd = useCallback((clientX: number, clientY: number) => {
+    // Provide subtle haptic vibration if supported on mobile
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(35);
+      } catch {}
+    }
+
+    // Keep radial menu centered within visible viewport bounds
+    const margin = 120;
+    const clampedX = Math.max(margin, Math.min(window.innerWidth - margin, clientX));
+    const clampedY = Math.max(margin, Math.min(window.innerHeight - margin, clientY));
+
+    setQuickAddPos({ x: clampedX, y: clampedY });
+    setIsQuickAddOpen(true);
+    longPressTriggeredRef.current = true;
+  }, []);
+
+  const handleTouchStartEmpty = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    longPressTriggeredRef.current = false;
+
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+
+    longPressTimerRef.current = setTimeout(() => {
+      triggerQuickAdd(touch.clientX, touch.clientY);
+    }, 450);
+  };
+
+  const handleTouchMoveEmpty = (e: React.TouchEvent) => {
+    if (!touchStartPosRef.current || !e.touches[0]) return;
+    const dx = e.touches[0].clientX - touchStartPosRef.current.x;
+    const dy = e.touches[0].clientY - touchStartPosRef.current.y;
+    // If user is panning/scrolling the canvas, cancel the long-press timer
+    if (Math.hypot(dx, dy) > 10) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }
+  };
+
+  const handleTouchEndEmpty = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleMouseDownEmpty = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // Only primary mouse button
+    touchStartPosRef.current = { x: e.clientX, y: e.clientY };
+    longPressTriggeredRef.current = false;
+
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+
+    longPressTimerRef.current = setTimeout(() => {
+      triggerQuickAdd(e.clientX, e.clientY);
+    }, 450);
+  };
+
+  const handleMouseMoveEmpty = (e: React.MouseEvent) => {
+    if (!touchStartPosRef.current) return;
+    const dx = e.clientX - touchStartPosRef.current.x;
+    const dy = e.clientY - touchStartPosRef.current.y;
+    if (Math.hypot(dx, dy) > 10) {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }
+  };
+
+  const handleMouseUpEmpty = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -129,6 +223,22 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
 
     if (styles.textAlign) s.textAlign = styles.textAlign;
     if (styles.textTransform) s.textTransform = styles.textTransform;
+
+    // Alignment & Flex self positioning
+    if (styles.alignSelf) {
+      s.alignSelf = styles.alignSelf === 'start' ? 'flex-start' : styles.alignSelf === 'end' ? 'flex-end' : styles.alignSelf;
+    }
+
+    // Margin Spacing
+    if (styles.marginMode === 'individual') {
+      if (styles.marginTop) s.marginTop = styles.marginTop;
+      if (styles.marginRight) s.marginRight = styles.marginRight;
+      if (styles.marginBottom) s.marginBottom = styles.marginBottom;
+      if (styles.marginLeft) s.marginLeft = styles.marginLeft;
+    } else if (styles.margin && styles.margin !== 'none') {
+      const marginMap: Record<string, string> = { xs: '4px', sm: '8px', md: '16px', lg: '24px' };
+      s.margin = marginMap[styles.margin] || '0px';
+    }
 
     // Spacing
     if (styles.paddingMode === 'individual') {
@@ -427,6 +537,20 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
           e.stopPropagation();
           onSelectElement(element.id);
         }}
+        onTouchStart={(e) => {
+          e.stopPropagation();
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+        }}
         style={elementStyle}
         className={`relative group rounded-xl transition cursor-pointer ${
           isSelected
@@ -515,7 +639,23 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
 
   return (
     <div
-      onClick={() => onSelectElement(null)}
+      onClick={() => {
+        if (!longPressTriggeredRef.current) {
+          onSelectElement(null);
+        }
+        longPressTriggeredRef.current = false;
+      }}
+      onTouchStart={handleTouchStartEmpty}
+      onTouchMove={handleTouchMoveEmpty}
+      onTouchEnd={handleTouchEndEmpty}
+      onTouchCancel={handleTouchEndEmpty}
+      onMouseDown={handleMouseDownEmpty}
+      onMouseMove={handleMouseMoveEmpty}
+      onMouseUp={handleMouseUpEmpty}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        triggerQuickAdd(e.clientX, e.clientY);
+      }}
       onDragOver={handleDragOver}
       onDrop={(e) => handleDrop(e, null)}
       className="flex-1 overflow-auto bg-[#09090b] flex flex-col items-center p-8 relative select-none"
@@ -523,6 +663,8 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
         backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
         backgroundSize: '24px 24px',
       }}
+      data-testid="canvas-area"
+      data-empty-canvas="true"
     >
       {/* Canvas Top Screen Header Indicator */}
       <div className="mb-4 flex items-center justify-between w-full max-w-4xl px-2 text-xs text-zinc-400">
@@ -531,8 +673,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
           <span className="font-semibold text-zinc-200">Screen: {activePage.name}</span>
           <span className="font-mono text-[10px] text-zinc-500">({activePage.path})</span>
         </div>
-        <div className="font-mono text-[10px] text-zinc-500">
-          {viewport.toUpperCase()} • {zoom}%
+        <div className="flex items-center gap-3 font-mono text-[10px] text-zinc-500">
+          <span className="hidden sm:inline text-zinc-400">Long-press canvas for Quick Add</span>
+          <span>{viewport.toUpperCase()} • {zoom}%</span>
         </div>
       </div>
 
@@ -548,10 +691,27 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
         <div
           onClick={(e) => {
             e.stopPropagation();
-            onSelectElement(null);
+            if (!longPressTriggeredRef.current) {
+              onSelectElement(null);
+            }
+            longPressTriggeredRef.current = false;
+          }}
+          onTouchStart={handleTouchStartEmpty}
+          onTouchMove={handleTouchMoveEmpty}
+          onTouchEnd={handleTouchEndEmpty}
+          onTouchCancel={handleTouchEndEmpty}
+          onMouseDown={handleMouseDownEmpty}
+          onMouseMove={handleMouseMoveEmpty}
+          onMouseUp={handleMouseUpEmpty}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerQuickAdd(e.clientX, e.clientY);
           }}
           style={{ backgroundColor: canvasBg }}
           className={`w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4`}
+          data-testid="canvas-device-frame"
+          data-empty-canvas="true"
         >
           {elements.length === 0 ? (
             /* Empty State */
@@ -561,7 +721,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
               </div>
               <h3 className="text-sm font-semibold text-zinc-200">{activePage.name} Screen is Empty</h3>
               <p className="text-xs text-zinc-500 max-w-sm mt-1">
-                Insert components from the left library or drop containers to design this screen.
+                Insert components from the left library, long-press empty canvas to Quick Add, or drop containers.
               </p>
               <div className="flex items-center gap-2 mt-4">
                 <button
@@ -591,6 +751,39 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
           )}
         </div>
       </div>
+
+      {/* Mobile Quick Add Floating Action Trigger */}
+      <div className="fixed bottom-16 left-4 z-40 sm:bottom-18">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+            triggerQuickAdd(cx, cy);
+          }}
+          className="flex items-center gap-2 pl-3 pr-4 py-2 rounded-full bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-xl shadow-blue-600/30 border border-blue-400/30 active:scale-95 transition-all cursor-pointer group"
+          title="Quick Add (or long-press empty space on canvas)"
+          data-testid="mobile-quick-add-fab"
+        >
+          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+            <Plus size={13} className="text-white group-hover:rotate-90 transition-transform duration-200" />
+          </div>
+          <span className="font-semibold text-xs tracking-wide">Quick Add</span>
+        </button>
+      </div>
+
+      {/* Circular Quick Add Radial Menu */}
+      <QuickAddRadialMenu
+        isOpen={isQuickAddOpen}
+        position={quickAddPos}
+        onClose={() => setIsQuickAddOpen(false)}
+        onSelectComponent={(type) => {
+          onDropComponent(type, null);
+          setIsQuickAddOpen(false);
+        }}
+        activePageName={activePage.name}
+      />
     </div>
   );
 };

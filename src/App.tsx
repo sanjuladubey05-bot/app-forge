@@ -57,6 +57,23 @@ import { ExportModal } from './components/ExportModal';
 import { CommandPalette } from './components/CommandPalette';
 import { DataStudio } from './components/DataStudio';
 import { TutorialQuestWidget } from './components/TutorialQuestWidget';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { 
+  ShortcutActionId, 
+  getActiveShortcuts, 
+  persistShortcutsToStorage, 
+  clearStoredShortcuts, 
+  matchesShortcut, 
+  getDefaultShortcuts 
+} from './utils/shortcut-manager';
+import { 
+  Box, 
+  FileCode2, 
+  Layers as LayersIcon, 
+  Sliders, 
+  Play, 
+  X 
+} from 'lucide-react';
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>(() => getStoredProjects());
@@ -68,26 +85,19 @@ export default function App() {
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('components');
   const [bottomTab, setBottomTab] = useState<BottomDrawerTab>('logic');
+  const [mobileDrawer, setMobileDrawer] = useState<'none' | 'left' | 'properties'>('none');
   
   // History for Undo / Redo
   const [past, setPast] = useState<Project[]>([]);
   const [future, setFuture] = useState<Project[]>([]);
 
-  // Logs stream for runtime telemetry
-  const [logs, setLogs] = useState<AppExecutionLog[]>([
-    {
-      id: 'log_init',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      type: 'action',
-      sourceElement: 'System',
-      message: 'AppForge IDE studio initialized with multi-page router.',
-      status: 'info',
-    },
-  ]);
+  // Execution logs recorded from user interactions and preview events
+  const [logs, setLogs] = useState<AppExecutionLog[]>([]);
 
   // Modals & Save Telemetry
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('All changes saved');
 
@@ -167,49 +177,6 @@ export default function App() {
     handleLogExecution('Redo', 'Reapplied action', 'action', 'info');
   }, [future, activeProject, handleLogExecution]);
 
-  // Keyboard shortcut listener for Undo / Redo & Command Palette & Modes
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Command Palette (Ctrl+K or Cmd+K)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsCommandPaletteOpen((prev) => !prev);
-        return;
-      }
-
-      // Mode switching (Alt+1, Alt+2, Alt+3)
-      if (e.altKey && e.key === '1') {
-        e.preventDefault();
-        setWorkspaceMode('design');
-        return;
-      } else if (e.altKey && e.key === '2') {
-        e.preventDefault();
-        setWorkspaceMode('logic');
-        setBottomTab('logic');
-        return;
-      } else if (e.altKey && e.key === '3') {
-        e.preventDefault();
-        setWorkspaceMode('data');
-        return;
-      }
-
-      // Undo / Redo
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        handleRedo();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo]);
 
   // Navigation & Project Handlers
   const handleOpenProject = (id: string) => {
@@ -399,6 +366,143 @@ export default function App() {
     }, 250);
   };
 
+  // Resolve active shortcuts (merging defaults, localStorage, and project custom overrides)
+  const activeShortcuts = getActiveShortcuts(activeProject);
+
+  const handleSaveShortcuts = (updated: Record<ShortcutActionId, string>) => {
+    persistShortcutsToStorage(updated);
+    if (activeProject) {
+      applyProjectMutation((proj) => ({
+        ...proj,
+        customShortcuts: updated,
+      }));
+    }
+    handleLogExecution('Shortcuts', 'Saved custom keyboard shortcuts', 'action', 'success');
+  };
+
+  const handleResetShortcuts = () => {
+    clearStoredShortcuts();
+    const defaults = getDefaultShortcuts();
+    if (activeProject) {
+      applyProjectMutation((proj) => ({
+        ...proj,
+        customShortcuts: defaults,
+      }));
+    }
+    handleLogExecution('Shortcuts', 'Reset shortcuts to defaults', 'action', 'info');
+  };
+
+  // Global Keyboard Shortcut Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Do not trigger global actions if modal is open and user might be recording keys
+      if (isShortcutsModalOpen) return;
+
+      const target = e.target as HTMLElement;
+      const isTyping = target && (
+        target.tagName === 'INPUT' || 
+        target.tagName === 'TEXTAREA' || 
+        target.isContentEditable
+      );
+
+      const shortcuts = getActiveShortcuts(activeProject);
+
+      // 1. Delete Element (respecting input typing guard)
+      if (matchesShortcut(e, shortcuts.deleteElement)) {
+        if (!isTyping && selectedElementId) {
+          e.preventDefault();
+          handleDeleteElement(selectedElementId);
+          return;
+        }
+      }
+
+      // 2. Duplicate Element (respecting input typing guard)
+      if (matchesShortcut(e, shortcuts.duplicateElement)) {
+        if (!isTyping && selectedElementId) {
+          e.preventDefault();
+          handleDuplicateElement(selectedElementId);
+          return;
+        }
+      }
+
+      // 3. Command Palette
+      if (matchesShortcut(e, shortcuts.commandPalette)) {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // 4. Preview Application
+      if (matchesShortcut(e, shortcuts.previewApp)) {
+        e.preventDefault();
+        if (activeProject) {
+          setView('preview');
+        }
+        return;
+      }
+
+      // 5. Save Project
+      if (matchesShortcut(e, shortcuts.saveProject)) {
+        e.preventDefault();
+        handleManualSave();
+        return;
+      }
+
+      // 6. Export Application
+      if (matchesShortcut(e, shortcuts.exportApp)) {
+        e.preventDefault();
+        setIsExportModalOpen(true);
+        return;
+      }
+
+      // 7. Quick Add
+      if (matchesShortcut(e, shortcuts.quickAdd)) {
+        e.preventDefault();
+        setLeftTab('components');
+        return;
+      }
+
+      // 8. Modes
+      if (matchesShortcut(e, shortcuts.modeDesign)) {
+        e.preventDefault();
+        setWorkspaceMode('design');
+        return;
+      } else if (matchesShortcut(e, shortcuts.modeLogic)) {
+        e.preventDefault();
+        setWorkspaceMode('logic');
+        setBottomTab('logic');
+        return;
+      } else if (matchesShortcut(e, shortcuts.modeData)) {
+        e.preventDefault();
+        setWorkspaceMode('data');
+        return;
+      }
+
+      // 9. Undo / Redo
+      if (matchesShortcut(e, shortcuts.undo)) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      } else if (matchesShortcut(e, shortcuts.redo)) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    activeProject,
+    selectedElementId,
+    isShortcutsModalOpen,
+    handleDeleteElement,
+    handleDuplicateElement,
+    handleUndo,
+    handleRedo,
+    handleManualSave,
+  ]);
+
   // If in Preview Mode
   if (view === 'preview' && activeProject) {
     return (
@@ -477,6 +581,7 @@ export default function App() {
           handleLogExecution('Mode', `Switched workspace to ${mode.toUpperCase()} mode`, 'action', 'info');
         }}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         theme={theme}
         onToggleTheme={() => {
           setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -492,39 +597,102 @@ export default function App() {
           onLogExecution={handleLogExecution}
         />
       ) : (
-        <div className="flex-1 flex overflow-hidden min-h-0">
-          {/* Left Sidebar (Components, Pages, Layers, Assets) */}
-          <LeftSidebar
-            project={activeProject}
-            activeTab={leftTab}
-            onChangeTab={setLeftTab}
-            selectedElementId={selectedElementId}
-            onSelectElement={setSelectedElementId}
-            onAddComponent={handleAddComponent}
-            onAddSection={handleAddSection}
-            onSwitchPage={handleSwitchPage}
-            onCreatePage={handleCreatePage}
-            onDuplicatePage={handleDuplicatePage}
-            onDeletePage={handleDeletePage}
-            onRenamePage={handleRenamePage}
-            onSetHomePage={handleSetHomePage}
-            onUpdatePageTransition={handleUpdatePageTransition}
-            onMoveElement={handleMoveElement}
-            onToggleVisibility={handleToggleVisibility}
-            onToggleLock={handleToggleLock}
-            onDeleteElement={handleDeleteElement}
-            onDuplicateElement={handleDuplicateElement}
-            onRenameElement={handleRenameElement}
-            onGroupSelected={handleGroupSelected}
-            onUngroupContainer={handleUngroupContainer}
-          />
+        <div className="flex-1 flex overflow-hidden min-h-0 relative">
+          {/* Left Sidebar (Desktop: pinned side rail) */}
+          <div className="hidden lg:flex shrink-0">
+            <LeftSidebar
+              project={activeProject}
+              activeTab={leftTab}
+              onChangeTab={setLeftTab}
+              selectedElementId={selectedElementId}
+              onSelectElement={setSelectedElementId}
+              onAddComponent={handleAddComponent}
+              onAddSection={handleAddSection}
+              onSwitchPage={handleSwitchPage}
+              onCreatePage={handleCreatePage}
+              onDuplicatePage={handleDuplicatePage}
+              onDeletePage={handleDeletePage}
+              onRenamePage={handleRenamePage}
+              onSetHomePage={handleSetHomePage}
+              onUpdatePageTransition={handleUpdatePageTransition}
+              onMoveElement={handleMoveElement}
+              onToggleVisibility={handleToggleVisibility}
+              onToggleLock={handleToggleLock}
+              onDeleteElement={handleDeleteElement}
+              onDuplicateElement={handleDuplicateElement}
+              onRenameElement={handleRenameElement}
+              onGroupSelected={handleGroupSelected}
+              onUngroupContainer={handleUngroupContainer}
+            />
+          </div>
 
-          {/* Central Canvas Area */}
+          {/* Mobile Left Drawer Slide-over */}
+          {mobileDrawer === 'left' && (
+            <div className="lg:hidden fixed inset-0 z-50 flex">
+              <div 
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs" 
+                onClick={() => setMobileDrawer('none')} 
+              />
+              <div className="relative z-10 w-80 max-w-[85vw] h-full bg-zinc-950 flex flex-col shadow-2xl border-r border-zinc-800">
+                <div className="p-2 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60">
+                  <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider px-2">Navigation & Tools</span>
+                  <button
+                    onClick={() => setMobileDrawer('none')}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <LeftSidebar
+                    project={activeProject}
+                    activeTab={leftTab}
+                    onChangeTab={setLeftTab}
+                    selectedElementId={selectedElementId}
+                    onSelectElement={(id) => {
+                      setSelectedElementId(id);
+                      setMobileDrawer('none');
+                    }}
+                    onAddComponent={(type, props) => {
+                      handleAddComponent(type, props);
+                      setMobileDrawer('none');
+                    }}
+                    onAddSection={(elements) => {
+                      handleAddSection(elements);
+                      setMobileDrawer('none');
+                    }}
+                    onSwitchPage={(id) => {
+                      handleSwitchPage(id);
+                      setMobileDrawer('none');
+                    }}
+                    onCreatePage={handleCreatePage}
+                    onDuplicatePage={handleDuplicatePage}
+                    onDeletePage={handleDeletePage}
+                    onRenamePage={handleRenamePage}
+                    onSetHomePage={handleSetHomePage}
+                    onUpdatePageTransition={handleUpdatePageTransition}
+                    onMoveElement={handleMoveElement}
+                    onToggleVisibility={handleToggleVisibility}
+                    onToggleLock={handleToggleLock}
+                    onDeleteElement={handleDeleteElement}
+                    onDuplicateElement={handleDuplicateElement}
+                    onRenameElement={handleRenameElement}
+                    onGroupSelected={handleGroupSelected}
+                    onUngroupContainer={handleUngroupContainer}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Central Canvas Area (Full width on mobile!) */}
           <CanvasArea
             activePage={activePage}
             elements={activePage.elements}
             selectedElementId={selectedElementId}
-            onSelectElement={setSelectedElementId}
+            onSelectElement={(id) => {
+              setSelectedElementId(id);
+            }}
             onDeleteElement={handleDeleteElement}
             onDuplicateElement={handleDuplicateElement}
             onMoveElement={handleMoveElement}
@@ -536,21 +704,121 @@ export default function App() {
             canvasPadding={activeProject.canvasPadding}
           />
 
-          {/* Right Properties Panel */}
-          <PropertiesPanel
-            selectedElement={selectedElement}
-            project={activeProject}
-            onUpdateElement={handleUpdateElement}
-            onUpdateProjectSettings={(settings) => {
-              applyProjectMutation((proj) => ({ ...proj, ...settings }));
-            }}
-            onDeleteElement={handleDeleteElement}
-            onDuplicateElement={handleDuplicateElement}
-            onToggleVisibility={handleToggleVisibility}
-            onToggleLock={handleToggleLock}
-          />
+          {/* Right Properties Panel (Desktop: pinned right rail) */}
+          <div className="hidden lg:flex shrink-0">
+            <PropertiesPanel
+              selectedElement={selectedElement}
+              project={activeProject}
+              onUpdateElement={handleUpdateElement}
+              onUpdateProjectSettings={(settings) => {
+                applyProjectMutation((proj) => ({ ...proj, ...settings }));
+              }}
+              onDeleteElement={handleDeleteElement}
+              onDuplicateElement={handleDuplicateElement}
+              onToggleVisibility={handleToggleVisibility}
+              onToggleLock={handleToggleLock}
+              onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
+            />
+          </div>
+
+          {/* Mobile Properties Panel Slide-over */}
+          {mobileDrawer === 'properties' && (
+            <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+              <div 
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs" 
+                onClick={() => setMobileDrawer('none')} 
+              />
+              <div className="relative z-10 w-84 max-w-[90vw] h-full bg-zinc-950 flex flex-col shadow-2xl border-l border-zinc-800">
+                <div className="p-2 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/60">
+                  <span className="text-xs font-semibold text-zinc-300 uppercase tracking-wider px-2">Design & Properties</span>
+                  <button
+                    onClick={() => setMobileDrawer('none')}
+                    className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <PropertiesPanel
+                    selectedElement={selectedElement}
+                    project={activeProject}
+                    onUpdateElement={handleUpdateElement}
+                    onUpdateProjectSettings={(settings) => {
+                      applyProjectMutation((proj) => ({ ...proj, ...settings }));
+                    }}
+                    onDeleteElement={handleDeleteElement}
+                    onDuplicateElement={handleDuplicateElement}
+                    onToggleVisibility={handleToggleVisibility}
+                    onToggleLock={handleToggleLock}
+                    onOpenShortcutsModal={() => {
+                      setIsShortcutsModalOpen(true);
+                      setMobileDrawer('none');
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav aria-label="Mobile Navigation" className="lg:hidden h-12 border-t border-zinc-800 bg-zinc-950 px-2 flex items-center justify-around z-30 shrink-0">
+        <button
+          onClick={() => {
+            setLeftTab('components');
+            setMobileDrawer(mobileDrawer === 'left' && leftTab === 'components' ? 'none' : 'left');
+          }}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-medium transition cursor-pointer ${
+            mobileDrawer === 'left' && leftTab === 'components' ? 'text-blue-400 bg-zinc-900' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Box size={16} />
+          <span>Add</span>
+        </button>
+        <button
+          onClick={() => {
+            setLeftTab('pages');
+            setMobileDrawer(mobileDrawer === 'left' && leftTab === 'pages' ? 'none' : 'left');
+          }}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-medium transition cursor-pointer ${
+            mobileDrawer === 'left' && leftTab === 'pages' ? 'text-blue-400 bg-zinc-900' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <FileCode2 size={16} />
+          <span>Pages</span>
+        </button>
+        <button
+          onClick={() => {
+            setLeftTab('layers');
+            setMobileDrawer(mobileDrawer === 'left' && leftTab === 'layers' ? 'none' : 'left');
+          }}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-medium transition cursor-pointer ${
+            mobileDrawer === 'left' && leftTab === 'layers' ? 'text-blue-400 bg-zinc-900' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <LayersIcon size={16} />
+          <span>Layers</span>
+        </button>
+        <button
+          onClick={() => {
+            setMobileDrawer(mobileDrawer === 'properties' ? 'none' : 'properties');
+          }}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-medium transition cursor-pointer ${
+            mobileDrawer === 'properties' ? 'text-blue-400 bg-zinc-900' : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Sliders size={16} />
+          <span>Design</span>
+        </button>
+        <button
+          onClick={() => setView('preview')}
+          className="flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-medium text-emerald-400 hover:text-emerald-300 transition cursor-pointer"
+        >
+          <Play size={16} className="fill-emerald-400" />
+          <span>Preview</span>
+        </button>
+      </nav>
 
       {/* 3. Bottom Panel (Logic Flowchart, Logs & Console, Diagnostic Tests) */}
       <BottomPanel
@@ -569,6 +837,15 @@ export default function App() {
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         project={activeProject}
+      />
+
+      {/* Global Keyboard Shortcuts Configuration Modal */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+        shortcuts={activeShortcuts}
+        onSaveShortcuts={handleSaveShortcuts}
+        onResetShortcuts={handleResetShortcuts}
       />
 
       {/* Create Modal if triggered from Studio */}
@@ -594,18 +871,21 @@ export default function App() {
         onOpenExport={() => setIsExportModalOpen(true)}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         isDark={theme === 'dark'}
       />
 
-      {/* Play-to-Build Interactive Tutorial Quests */}
-      <TutorialQuestWidget
-        project={activeProject}
-        selectedElement={selectedElement}
-        isPreviewing={view === 'preview'}
-        onNavigateTab={(tab) => setLeftTab(tab)}
-        onOpenPreview={() => setView('preview')}
-      />
+      {/* Play-to-Build Interactive Tutorial Quests (Desktop) */}
+      <div className="hidden sm:block">
+        <TutorialQuestWidget
+          project={activeProject}
+          selectedElement={selectedElement}
+          isPreviewing={view === 'preview'}
+          onNavigateTab={(tab) => setLeftTab(tab)}
+          onOpenPreview={() => setView('preview')}
+        />
+      </div>
     </div>
   );
 }

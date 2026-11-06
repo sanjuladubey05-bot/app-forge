@@ -22,7 +22,8 @@ import {
   Database,
   Search,
   Sun,
-  Moon
+  Moon,
+  Keyboard
 } from 'lucide-react';
 import { Page, ViewportMode, WorkspaceMode, StudioTheme } from '../types/editor';
 
@@ -51,6 +52,7 @@ interface TopToolbarProps {
   workspaceMode: WorkspaceMode;
   onChangeWorkspaceMode: (mode: WorkspaceMode) => void;
   onOpenCommandPalette: () => void;
+  onOpenShortcutsModal?: () => void;
   theme: StudioTheme;
   onToggleTheme: () => void;
 }
@@ -80,6 +82,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   workspaceMode,
   onChangeWorkspaceMode,
   onOpenCommandPalette,
+  onOpenShortcutsModal,
   theme,
   onToggleTheme,
 }) => {
@@ -211,7 +214,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             title="Design Mode: Visual styling and responsive layouts (Alt+1)"
             className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
               workspaceMode === 'design'
-                ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                ? 'bg-zinc-800 text-white font-semibold'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -223,7 +226,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             title="Logic Mode: Visual workflows and interactive triggers (Alt+2)"
             className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
               workspaceMode === 'logic'
-                ? 'bg-emerald-600 text-white font-semibold shadow-sm'
+                ? 'bg-zinc-800 text-white font-semibold'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -235,7 +238,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             title="Data Mode: Database collections and reactive state (Alt+3)"
             className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
               workspaceMode === 'data'
-                ? 'bg-amber-600 text-white font-semibold shadow-sm'
+                ? 'bg-zinc-800 text-white font-semibold'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -276,7 +279,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             onClick={() => onChangeViewport('desktop')}
             title="Desktop view (1200px)"
             className={`p-1 rounded transition cursor-pointer ${
-              viewport === 'desktop' ? 'bg-zinc-800 text-blue-400' : 'text-zinc-400 hover:text-zinc-200'
+              viewport === 'desktop' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Monitor size={14} />
@@ -285,7 +288,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             onClick={() => onChangeViewport('tablet')}
             title="Tablet view (768px)"
             className={`p-1 rounded transition cursor-pointer ${
-              viewport === 'tablet' ? 'bg-zinc-800 text-blue-400' : 'text-zinc-400 hover:text-zinc-200'
+              viewport === 'tablet' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Tablet size={14} />
@@ -294,7 +297,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             onClick={() => onChangeViewport('mobile')}
             title="Mobile view (375px)"
             className={`p-1 rounded transition cursor-pointer ${
-              viewport === 'mobile' ? 'bg-zinc-800 text-blue-400' : 'text-zinc-400 hover:text-zinc-200'
+              viewport === 'mobile' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Smartphone size={14} />
@@ -336,6 +339,18 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           </kbd>
         </button>
 
+        {/* Hotkeys / Shortcuts Manager */}
+        {onOpenShortcutsModal && (
+          <button
+            onClick={onOpenShortcutsModal}
+            className="p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
+            title="Keyboard Shortcuts & Hotkeys Settings"
+            data-testid="toolbar-shortcuts-btn"
+          >
+            <Keyboard size={13} />
+          </button>
+        )}
+
         {/* Theme Toggle */}
         <button
           onClick={onToggleTheme}
@@ -366,11 +381,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
         <button
           onClick={onOpenPreview}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium transition cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-100 hover:border-zinc-600 text-xs font-medium transition cursor-pointer"
           title="Preview interactive prototype"
         >
-          <Play size={12} className="fill-emerald-400" />
-          <span className="font-semibold">Preview</span>
+          <Play size={12} className="fill-emerald-400 text-emerald-400" />
+          <span>Preview</span>
         </button>
 
         <button

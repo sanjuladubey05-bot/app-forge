@@ -302,4 +302,126 @@ test('motion event trigger supports onMount, onHover, onClick, infinite', () => 
   assert.equal(el.styles.motion.trigger, 'infinite');
 });
 
+test('circular Quick Add shortcuts map to valid ComponentTypes and add elements correctly', async () => {
+  const { QUICK_ADD_OPTIONS } = await import('../components/QuickAddRadialMenu');
+  assert.equal(QUICK_ADD_OPTIONS.length, 8);
 
+  const expectedTypes = ['button', 'heading', 'text', 'card', 'input', 'image', 'container', 'badge'];
+  const actualTypes = QUICK_ADD_OPTIONS.map((opt) => opt.type);
+  assert.deepEqual(actualTypes, expectedTypes);
+
+  let project = createInitialProject('Quick Add Test', 'blank');
+  const initialCount = project.pages[0].elements.length;
+
+  // Add each quick add component type to project
+  for (const opt of QUICK_ADD_OPTIONS) {
+    const el = createNewElement(opt.type);
+    assert.equal(el.type, opt.type);
+    assert.ok(el.id.startsWith('el_'));
+    project = addElement(project, el);
+  }
+
+  assert.equal(project.pages[0].elements.length, initialCount + 8);
+  const addedTypes = project.pages[0].elements.slice(initialCount).map((el) => el.type);
+  assert.deepEqual(addedTypes, expectedTypes);
+});
+
+test('global keyboard shortcut manager: normalization, conflict detection, and matching', async () => {
+  const { 
+    STANDARD_SHORTCUTS, 
+    getDefaultShortcuts, 
+    getActiveShortcuts, 
+    eventToKeyCombo, 
+    matchesShortcut, 
+    findShortcutConflict 
+  } = await import('./shortcut-manager');
+
+  // 1. Verify standard shortcuts
+  assert.equal(STANDARD_SHORTCUTS.length, 12);
+  const deleteAction = STANDARD_SHORTCUTS.find((s) => s.id === 'deleteElement');
+  const previewAction = STANDARD_SHORTCUTS.find((s) => s.id === 'previewApp');
+  assert.ok(deleteAction);
+  assert.equal(deleteAction?.defaultKey, 'Delete');
+  assert.ok(previewAction);
+  assert.equal(previewAction?.defaultKey, 'Ctrl+P');
+
+  // 2. Default mapping
+  const defaults = getDefaultShortcuts();
+  assert.equal(defaults.deleteElement, 'Delete');
+  assert.equal(defaults.previewApp, 'Ctrl+P');
+  assert.equal(defaults.saveProject, 'Ctrl+S');
+
+  // 3. Project custom overrides
+  let project = createInitialProject('Shortcuts Test', 'blank');
+  project.customShortcuts = {
+    deleteElement: 'Backspace',
+    previewApp: 'Ctrl+Shift+P',
+  };
+  const active = getActiveShortcuts(project);
+  assert.equal(active.deleteElement, 'Backspace');
+  assert.equal(active.previewApp, 'Ctrl+Shift+P');
+  // untouched defaults should remain
+  assert.equal(active.saveProject, 'Ctrl+S');
+
+  // 4. eventToKeyCombo normalization
+  const mockDeleteEvent = { key: 'Delete', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false } as KeyboardEvent;
+  assert.equal(eventToKeyCombo(mockDeleteEvent), 'Delete');
+
+  const mockCtrlPEvent = { key: 'p', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false } as KeyboardEvent;
+  assert.equal(eventToKeyCombo(mockCtrlPEvent), 'Ctrl+P');
+
+  const mockAlt1Event = { key: '1', ctrlKey: false, altKey: true, shiftKey: false, metaKey: false } as KeyboardEvent;
+  assert.equal(eventToKeyCombo(mockAlt1Event), 'Alt+1');
+
+  // 5. matchesShortcut
+  assert.equal(matchesShortcut(mockCtrlPEvent, 'Ctrl+P'), true);
+  assert.equal(matchesShortcut(mockCtrlPEvent, 'Ctrl+S'), false);
+  assert.equal(matchesShortcut(mockDeleteEvent, 'Delete'), true);
+
+  // 6. Conflict detection
+  const conflict = findShortcutConflict('previewApp', 'Ctrl+S', defaults);
+  assert.ok(conflict);
+  assert.equal(conflict?.conflictingActionId, 'saveProject');
+  assert.equal(conflict?.conflictingName, 'Save Project');
+
+  const noConflict = findShortcutConflict('previewApp', 'Ctrl+Alt+P', defaults);
+  assert.equal(noConflict, null);
+});
+
+test('UI elements tag filter and search matching', () => {
+  const elements = [
+    { title: 'Flex Container', desc: 'Auto-layout wrapper', tags: ['container', 'flex', 'layout', 'box', 'stack'] },
+    { title: 'Action Button', desc: 'Interactive button with action pipeline', tags: ['button', 'cta', 'click', 'action'] },
+    { title: 'Text Input', desc: 'Single-line field with label', tags: ['input', 'form', 'text', 'field'] },
+    { title: 'Metric KPI Card', desc: 'Counter with trend percentage', tags: ['metric', 'kpi', 'stat', 'analytics'] },
+  ];
+
+  // Helper matching function mirroring LeftSidebar
+  const filterByQuery = (q: string) => {
+    const term = q.trim().toLowerCase();
+    return elements.filter((item) =>
+      item.title.toLowerCase().includes(term) ||
+      item.desc.toLowerCase().includes(term) ||
+      item.tags.some((t) => t.toLowerCase().includes(term))
+    );
+  };
+
+  // Search by exact name
+  assert.equal(filterByQuery('Button').length, 1);
+  assert.equal(filterByQuery('Button')[0].title, 'Action Button');
+
+  // Search by tag 'cta'
+  assert.equal(filterByQuery('cta').length, 1);
+  assert.equal(filterByQuery('cta')[0].title, 'Action Button');
+
+  // Search by tag 'stat'
+  assert.equal(filterByQuery('stat').length, 1);
+  assert.equal(filterByQuery('stat')[0].title, 'Metric KPI Card');
+
+  // Search by tag 'flex'
+  assert.equal(filterByQuery('flex').length, 1);
+  assert.equal(filterByQuery('flex')[0].title, 'Flex Container');
+
+  // Non-matching term
+  assert.equal(filterByQuery('nonexistent_random_xyz').length, 0);
+});

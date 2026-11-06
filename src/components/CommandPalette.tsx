@@ -14,7 +14,8 @@ import {
   Moon,
   Sun,
   X,
-  ArrowRight
+  ArrowRight,
+  Keyboard
 } from 'lucide-react';
 import { Page, ComponentType, WorkspaceMode } from '../types/editor';
 
@@ -30,6 +31,7 @@ interface CommandPaletteProps {
   onOpenExport: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onOpenShortcutsModal?: () => void;
   onToggleTheme: () => void;
   isDark: boolean;
 }
@@ -56,6 +58,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenExport,
   onUndo,
   onRedo,
+  onOpenShortcutsModal,
   onToggleTheme,
   isDark,
 }) => {
@@ -137,6 +140,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: isDark ? <Sun size={14} className="text-amber-300" /> : <Moon size={14} className="text-blue-400" />,
         action: onToggleTheme,
       },
+      ...(onOpenShortcutsModal ? [{
+        id: 'action-shortcuts',
+        category: 'Actions' as const,
+        title: 'Configure Keyboard Shortcuts',
+        subtitle: 'Customize global hotkeys for operations, preview, and editing',
+        icon: <Keyboard size={14} className="text-blue-400" />,
+        action: onOpenShortcutsModal,
+      }] : []),
     ];
 
     // Navigation (Screens)

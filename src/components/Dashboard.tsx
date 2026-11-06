@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { 
   Plus, 
   Search, 
-  FolderGit2, 
   Trash2, 
   Copy, 
   ExternalLink, 
@@ -11,8 +10,9 @@ import {
   Smartphone,
   Layers,
   Sparkles,
-  Zap,
-  Code2
+  Code2,
+  FolderGit2,
+  Compass
 } from 'lucide-react';
 import { Project } from '../types/editor';
 
@@ -40,13 +40,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     p.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const totalElements = projects.reduce((acc, p) => {
-    if (p.pages && p.pages.length > 0) {
-      return acc + p.pages.reduce((pAcc, pg) => pAcc + pg.elements.length, 0);
-    }
-    return acc + (p.elements?.length || 0);
-  }, 0);
-
   const formatRelativeTime = (isoString: string) => {
     try {
       const diffMs = Date.now() - new Date(isoString).getTime();
@@ -65,44 +58,83 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const getViewportIcon = (viewport: string) => {
     switch (viewport) {
       case 'tablet':
-        return <Tablet size={13} className="text-zinc-400" />;
+        return <Tablet size={13} className="text-zinc-500" />;
       case 'mobile':
-        return <Smartphone size={13} className="text-zinc-400" />;
+        return <Smartphone size={13} className="text-zinc-500" />;
       default:
-        return <Monitor size={13} className="text-zinc-400" />;
+        return <Monitor size={13} className="text-zinc-500" />;
     }
   };
 
+  const starters = [
+    { 
+      id: 'blank', 
+      name: 'Start Scratch', 
+      desc: 'Empty canvas with standard layout', 
+      icon: Code2 
+    },
+    { 
+      id: 'practice', 
+      name: 'Practice Project', 
+      desc: 'Interactive 6-step guided walkthrough', 
+      icon: Compass 
+    },
+    { 
+      id: 'saas', 
+      name: 'Website Portal', 
+      desc: 'Multi-screen responsive web app', 
+      icon: Monitor 
+    },
+    { 
+      id: 'mobile', 
+      name: 'Mobile App', 
+      desc: 'Touch-optimized mobile screen layout', 
+      icon: Smartphone 
+    },
+    { 
+      id: 'contact', 
+      name: 'Contact Form', 
+      desc: 'Inquiry and lead intake workflow', 
+      icon: FolderGit2 
+    },
+    { 
+      id: 'card', 
+      name: 'Product Showcase', 
+      desc: 'Catalog card and product showcase', 
+      icon: Layers 
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col overflow-y-auto">
-      {/* Top Navbar */}
-      <header className="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-20">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
+      {/* Top Navigation */}
+      <header className="h-13 border-b border-zinc-800/80 bg-zinc-950 px-6 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold text-sm tracking-wider">
+          <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200 font-bold text-xs tracking-wider">
             AF
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-bold tracking-tight text-zinc-100 text-sm">APPFORGE</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 font-medium">STUDIO v1.0</span>
+            <span className="font-semibold text-zinc-100 text-sm tracking-tight">AppForge</span>
+            <span className="text-zinc-500 text-xs font-normal">· Studio</span>
           </div>
         </div>
 
-        {/* Global Search & New Project CTA */}
+        {/* Search & New Project CTA */}
         <div className="flex items-center gap-3">
           <div className="relative w-64 hidden sm:block">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
-              placeholder="Search applications..."
+              placeholder="Search projects..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
+              className="w-full bg-zinc-900/80 border border-zinc-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
             />
           </div>
 
           <button
             onClick={onNewProjectClick}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md shadow-blue-600/20 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-xs transition cursor-pointer shadow-xs active:scale-[0.98]"
           >
             <Plus size={14} />
             <span>New Project</span>
@@ -111,76 +143,46 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8 space-y-8">
-        {/* Hero & Workspace Telemetry Header */}
-        <div className="p-6 rounded-2xl border border-zinc-800/80 bg-gradient-to-r from-zinc-900 via-zinc-900/90 to-zinc-950 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-          
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 space-y-10">
+        {/* Workspace Introduction Header */}
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
             <div>
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium mb-3">
-                <Zap size={13} />
-                <span>Zero-Code Full Application Builder</span>
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">
+              <h1 className="text-xl font-semibold tracking-tight text-zinc-100">
                 Workspace Dashboard
               </h1>
-              <p className="text-zinc-400 text-xs mt-1 max-w-xl leading-relaxed">
-                Build production-grade web applications with a visual IDE canvas, customizable component library, interactive event bindings, and instant export.
+              <p className="text-zinc-400 text-xs mt-1 max-w-xl">
+                Design, build, and prototype multi-screen web and mobile applications with a visual editor.
               </p>
             </div>
-
-            {/* Quick Metrics */}
-            <div className="grid grid-cols-3 gap-3 bg-zinc-950/70 p-3 rounded-xl border border-zinc-800">
-              <div className="px-3 py-1">
-                <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Projects</span>
-                <span className="text-lg font-bold text-white font-mono">{projects.length}</span>
-              </div>
-              <div className="px-3 py-1 border-l border-zinc-800">
-                <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Components</span>
-                <span className="text-lg font-bold text-blue-400 font-mono">{totalElements}</span>
-              </div>
-              <div className="px-3 py-1 border-l border-zinc-800">
-                <span className="text-[10px] text-zinc-400 uppercase tracking-wider block font-medium">Engine</span>
-                <span className="text-lg font-bold text-emerald-400 font-mono">Ready</span>
-              </div>
+            <div className="text-xs text-zinc-500">
+              <span>{projects.length} {projects.length === 1 ? 'project' : 'projects'} in workspace</span>
             </div>
           </div>
 
-          {/* Quick Starter Cards */}
-          <div className="mt-6 pt-5 border-t border-zinc-800/80">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                Choose a Starting Point
-              </span>
-              <span className="text-[10px] text-blue-400 font-mono font-medium">Step 1 — Zero Code</span>
+          {/* Starter Choices Grid */}
+          <div className="pt-2">
+            <div className="text-[11px] font-medium text-zinc-400 mb-2.5">
+              Choose a Starting Point
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-              {[
-                { id: 'blank', name: 'Start Scratch', desc: 'Empty canvas', icon: Code2, color: 'text-emerald-400' },
-                { id: 'practice', name: 'Practice Project', desc: 'Guided missions', icon: Sparkles, color: 'text-amber-400' },
-                { id: 'saas', name: 'Website Portal', desc: 'Desktop layout', icon: Monitor, color: 'text-blue-400' },
-                { id: 'mobile', name: 'Mobile App', desc: 'Phone layout', icon: Smartphone, color: 'text-purple-400' },
-                { id: 'contact', name: 'Contact Form', desc: 'Lead capture', icon: FolderGit2, color: 'text-rose-400' },
-                { id: 'card', name: 'Product Showcase', desc: 'Card layout', icon: Layers, color: 'text-cyan-400' },
-              ].map((tmpl) => {
-                const Icon = tmpl.icon;
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {starters.map((starter) => {
+                const Icon = starter.icon;
                 return (
                   <button
-                    key={tmpl.id}
-                    onClick={() => onQuickCreate(tmpl.id)}
-                    className="flex flex-col p-2.5 rounded-xl border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-800/60 hover:border-zinc-700 transition cursor-pointer text-left group"
+                    key={starter.id}
+                    onClick={() => onQuickCreate(starter.id)}
+                    className="p-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 hover:bg-zinc-900 hover:border-zinc-700 transition cursor-pointer text-left flex flex-col justify-between group h-24"
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <Icon size={16} className={`${tmpl.color} group-hover:scale-110 transition`} />
-                      <span className="text-[9px] font-mono text-zinc-500">1-Click</span>
+                    <Icon size={15} className="text-zinc-400 group-hover:text-zinc-200 transition" />
+                    <div>
+                      <div className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
+                        {starter.name}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 truncate mt-0.5">
+                        {starter.desc}
+                      </div>
                     </div>
-                    <span className="text-xs font-semibold text-zinc-200 group-hover:text-white truncate">
-                      {tmpl.name}
-                    </span>
-                    <span className="text-[10px] text-zinc-500 truncate mt-0.5">
-                      {tmpl.desc}
-                    </span>
                   </button>
                 );
               })}
@@ -190,19 +192,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Projects Section */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
+              <h2 className="text-sm font-semibold text-zinc-200">
                 Your Applications
               </h2>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-mono">
-                {filteredProjects.length}
+              <span className="text-xs text-zinc-500 font-mono">
+                ({filteredProjects.length})
               </span>
             </div>
 
             {/* Mobile Search input */}
             <div className="sm:hidden relative w-44">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
               <input
                 type="text"
                 placeholder="Search..."
@@ -214,83 +216,83 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {filteredProjects.length === 0 ? (
-            <div className="text-center py-16 px-4 border border-dashed border-zinc-800 rounded-2xl bg-zinc-950/40">
-              <FolderGit2 size={36} className="mx-auto text-zinc-600 mb-3" />
-              <h3 className="text-sm font-semibold text-zinc-300">No projects found</h3>
+            <div className="text-center py-16 px-4 border border-dashed border-zinc-800/80 rounded-2xl bg-zinc-950">
+              <FolderGit2 size={32} className="mx-auto text-zinc-600 mb-2.5" />
+              <h3 className="text-xs font-semibold text-zinc-300">No applications match your filter</h3>
               <p className="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
-                {searchQuery ? 'Try clearing your search keyword.' : 'Create your first no-code project to begin designing.'}
+                {searchQuery ? 'Try searching with a different term.' : 'Get started by creating a new blank project or selecting a template.'}
               </p>
               <button
                 onClick={onNewProjectClick}
-                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs transition cursor-pointer"
+                className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-xs transition cursor-pointer"
               >
-                <Plus size={14} />
-                <span>Create New Project</span>
+                <Plus size={13} />
+                <span>Create Application</span>
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Card for creating a new project */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {/* Quick blank tile */}
               <button
                 onClick={onNewProjectClick}
-                className="h-52 rounded-2xl border-2 border-dashed border-zinc-800 hover:border-blue-500/50 bg-zinc-950/30 hover:bg-blue-500/5 transition flex flex-col items-center justify-center p-6 cursor-pointer group text-zinc-400 hover:text-blue-400"
+                className="h-44 rounded-xl border border-dashed border-zinc-800 hover:border-zinc-600 bg-zinc-950 hover:bg-zinc-900/30 transition flex flex-col items-center justify-center p-5 cursor-pointer text-zinc-400 hover:text-zinc-200 group"
               >
-                <div className="w-11 h-11 rounded-full bg-zinc-900 border border-zinc-800 group-hover:border-blue-500/30 flex items-center justify-center mb-3 group-hover:scale-110 transition shadow-inner">
-                  <Plus size={20} className="text-zinc-400 group-hover:text-blue-400" />
+                <div className="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 group-hover:border-zinc-700 flex items-center justify-center mb-2.5 transition">
+                  <Plus size={16} className="text-zinc-400 group-hover:text-zinc-100" />
                 </div>
-                <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">Create New Project</span>
-                <span className="text-[11px] text-zinc-500 mt-1 text-center">Start with a blank canvas or custom template</span>
+                <span className="text-xs font-medium text-zinc-300 group-hover:text-white">Create New Project</span>
+                <span className="text-[11px] text-zinc-500 mt-0.5 text-center">Start with an empty canvas</span>
               </button>
 
-              {/* Existing Project Cards */}
+              {/* Project Cards */}
               {filteredProjects.map((project) => (
                 <div
                   key={project.id}
-                  className="h-52 rounded-2xl border border-zinc-800 bg-zinc-900/70 hover:border-zinc-700 hover:bg-zinc-900 transition flex flex-col justify-between p-5 group shadow-lg shadow-black/20"
+                  className="h-44 rounded-xl border border-zinc-800/80 bg-zinc-900/40 hover:bg-zinc-900/70 hover:border-zinc-700 transition flex flex-col justify-between p-4 group"
                 >
                   <div>
-                    {/* Top row of card */}
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                    {/* Header: Name + Target Viewport */}
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
                       <div className="flex-1 min-w-0">
                         <h3 
                           onClick={() => onOpenProject(project.id)}
-                          className="text-sm font-semibold text-zinc-100 group-hover:text-blue-400 transition cursor-pointer truncate"
+                          className="text-xs font-semibold text-zinc-100 group-hover:text-white transition cursor-pointer truncate"
                           title={project.name}
                         >
                           {project.name}
                         </h3>
                         <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-                          {project.description}
+                          {project.description || 'No description provided'}
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 text-[10px] font-mono text-zinc-400">
-                          {getViewportIcon(project.viewport)}
-                          <span className="capitalize">{project.viewport}</span>
-                        </span>
+                      <div className="flex items-center gap-1 text-zinc-500 shrink-0">
+                        {getViewportIcon(project.viewport)}
+                        <span className="text-[10px] capitalize text-zinc-500">{project.viewport}</span>
                       </div>
                     </div>
 
-                    {/* Metadata tags */}
-                    <div className="flex items-center gap-2 mt-4 text-[11px] text-zinc-400">
-                      <span className="flex items-center gap-1 bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800/80">
-                        <Layers size={11} className="text-blue-400" />
-                        <span className="font-mono">{project.pages?.length || 1}</span> screens • <span className="font-mono">{project.pages ? project.pages.reduce((acc, pg) => acc + pg.elements.length, 0) : (project.elements?.length || 0)}</span> components
+                    {/* Metadata - Clean Unboxed Typography (Zero-Pill) */}
+                    <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 mt-3">
+                      <span>{project.pages?.length || 1} screens</span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {project.pages 
+                          ? project.pages.reduce((acc, pg) => acc + pg.elements.length, 0) 
+                          : (project.elements?.length || 0)} elements
                       </span>
-                      <span className="text-zinc-500 font-mono text-[10px]">
-                        Edited {formatRelativeTime(project.updatedAt)}
-                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>Edited {formatRelativeTime(project.updatedAt)}</span>
                     </div>
                   </div>
 
-                  {/* Bottom Actions */}
-                  <div className="pt-3 border-t border-zinc-800 flex items-center justify-between">
-                    <div className="flex items-center gap-1">
+                  {/* Card Actions */}
+                  <div className="pt-2.5 border-t border-zinc-800/80 flex items-center justify-between">
+                    <div className="flex items-center gap-0.5">
                       <button
                         onClick={() => onDuplicateProject(project.id)}
                         title="Duplicate project"
-                        className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition"
+                        className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/80 rounded transition"
                       >
                         <Copy size={13} />
                       </button>
@@ -301,7 +303,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           }
                         }}
                         title="Delete project"
-                        className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+                        className="p-1 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -309,10 +311,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                     <button
                       onClick={() => onOpenProject(project.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-blue-600 hover:text-white text-zinc-200 text-xs font-medium transition cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-xs font-medium transition cursor-pointer"
                     >
                       <span>Open Editor</span>
-                      <ExternalLink size={12} />
+                      <ExternalLink size={11} />
                     </button>
                   </div>
                 </div>
@@ -322,19 +324,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </main>
 
-      {/* Global Status Footer */}
-      <footer className="h-8 border-t border-zinc-800/80 bg-zinc-950 px-6 flex items-center justify-between text-[11px] text-zinc-400 font-mono">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            AppForge IDE Engine v1.0.0
-          </span>
-          <span className="hidden sm:inline text-zinc-600">|</span>
-          <span className="hidden sm:inline">No-Code Runtime Ready</span>
-        </div>
-        <div>
-          <span>Local Storage Sync Active</span>
-        </div>
+      {/* Quiet Footer */}
+      <footer className="border-t border-zinc-800/80 py-4 px-6 text-center text-xs text-zinc-500">
+        <p>AppForge Studio · Visual Application Architecture</p>
       </footer>
     </div>
   );

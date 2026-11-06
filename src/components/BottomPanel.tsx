@@ -46,7 +46,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   onClearLogs,
   onRunTestScenario,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [drawerState, setDrawerState] = useState<'collapsed' | 'normal' | 'expanded'>('collapsed');
   const [testResults, setTestResults] = useState<{ id: string; name: string; status: 'pass' | 'fail'; message: string }[]>([
     { id: 't1', name: 'Multi-Page Router Integrity', status: 'pass', message: `All ${project.pages.length} screens mapped with valid routes.` },
     { id: 't2', name: 'Home Screen Designated', status: 'pass', message: `Entrypoint set to ${project.homePageId}.` },
@@ -55,6 +55,13 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
 
   const activePage = getActivePage(project);
   const interactions = selectedElement?.interactions || [];
+
+  const handleTabClick = (tab: BottomDrawerTab) => {
+    onChangeTab(tab);
+    if (drawerState === 'collapsed') {
+      setDrawerState('normal');
+    }
+  };
 
   const handleAddWorkflowStep = (type: any) => {
     if (!selectedElement) return;
@@ -125,16 +132,16 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
   return (
     <footer
       className={`border-t border-zinc-800 bg-zinc-950 flex flex-col shrink-0 select-none transition-all duration-200 ${
-        isExpanded ? 'h-72' : 'h-44'
+        drawerState === 'collapsed' ? 'h-8' : drawerState === 'expanded' ? 'h-72' : 'h-48'
       }`}
     >
       {/* Top Tabs Rail */}
-      <div className="h-9 px-3 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
+      <div className="h-8 px-3 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between">
         <div className="flex items-center gap-1">
           <button
-            onClick={() => onChangeTab('logic')}
+            onClick={() => handleTabClick('logic')}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-t transition cursor-pointer ${
-              activeTab === 'logic'
+              activeTab === 'logic' && drawerState !== 'collapsed'
                 ? 'border-b-2 border-blue-500 text-blue-400 bg-zinc-900/60 font-semibold'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
@@ -144,21 +151,21 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           </button>
 
           <button
-            onClick={() => onChangeTab('logs')}
+            onClick={() => handleTabClick('logs')}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-t transition cursor-pointer ${
-              activeTab === 'logs'
+              activeTab === 'logs' && drawerState !== 'collapsed'
                 ? 'border-b-2 border-blue-500 text-blue-400 bg-zinc-900/60 font-semibold'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             <Terminal size={13} />
-            <span>Execution Logs ({logs.length})</span>
+            <span>Execution Logs {logs.length > 0 && `(${logs.length})`}</span>
           </button>
 
           <button
-            onClick={() => onChangeTab('test')}
+            onClick={() => handleTabClick('test')}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-t transition cursor-pointer ${
-              activeTab === 'test'
+              activeTab === 'test' && drawerState !== 'collapsed'
                 ? 'border-b-2 border-blue-500 text-blue-400 bg-zinc-900/60 font-semibold'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
@@ -169,36 +176,58 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
         </div>
 
         {/* Height toggle */}
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition cursor-pointer"
-          title={isExpanded ? 'Collapse drawer' : 'Expand drawer'}
-        >
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-        </button>
+        <div className="flex items-center gap-1">
+          {drawerState === 'collapsed' ? (
+            <button
+              onClick={() => setDrawerState('normal')}
+              className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition cursor-pointer"
+              title="Open drawer"
+            >
+              <ChevronUp size={14} />
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => setDrawerState(drawerState === 'expanded' ? 'normal' : 'expanded')}
+                className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition cursor-pointer"
+                title={drawerState === 'expanded' ? 'Restore height' : 'Expand full'}
+              >
+                {drawerState === 'expanded' ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </button>
+              <button
+                onClick={() => setDrawerState('collapsed')}
+                className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800 transition cursor-pointer"
+                title="Collapse drawer"
+              >
+                <ChevronDown size={14} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Drawer Content */}
-      <div className="flex-1 overflow-y-auto p-3 text-xs bg-zinc-950">
-        {/* ================= VISUAL LOGIC BUILDER ================= */}
-        {activeTab === 'logic' && (
-          <div>
-            {!selectedElement ? (
-              <div className="text-zinc-500 text-center py-6 flex flex-col items-center">
-                <GitBranch size={20} className="mb-2 text-zinc-600" />
-                <span>Select a component on the canvas to inspect and edit its visual workflow flowchart.</span>
-              </div>
-            ) : (
-              <div className="space-y-3 max-w-4xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-zinc-200">
-                      Interaction Flowchart: [{selectedElement.name}]
-                    </span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                      Trigger: On Click
-                    </span>
-                  </div>
+      {drawerState !== 'collapsed' && (
+        <div className="flex-1 overflow-y-auto p-3 text-xs bg-zinc-950">
+          {/* ================= VISUAL LOGIC BUILDER ================= */}
+          {activeTab === 'logic' && (
+            <div>
+              {!selectedElement ? (
+                <div className="text-zinc-500 text-center py-6 flex flex-col items-center">
+                  <GitBranch size={20} className="mb-2 text-zinc-600" />
+                  <span>Select a component on the canvas to inspect and edit its visual workflow flowchart.</span>
+                </div>
+              ) : (
+                <div className="space-y-3 max-w-4xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-zinc-200">
+                        Interaction Flowchart: [{selectedElement.name}]
+                      </span>
+                      <span className="text-[10px] font-mono text-zinc-400">
+                        Trigger: On Click
+                      </span>
+                    </div>
 
                   {/* Add action node buttons */}
                   <div className="flex items-center gap-1.5">
@@ -376,7 +405,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
                       <div className="text-[11px] text-zinc-400 mt-0.5">{t.message}</div>
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20">
+                  <span className="text-[11px] font-mono font-medium text-emerald-400">
                     PASS
                   </span>
                 </div>
@@ -385,6 +414,7 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
           </div>
         )}
       </div>
+      )}
     </footer>
   );
 };
