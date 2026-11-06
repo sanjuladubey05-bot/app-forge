@@ -149,6 +149,17 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
     if (styles.shadow === 'glow-blue') s.boxShadow = '0 0 20px -3px rgba(59, 130, 246, 0.4)';
     else if (styles.shadow === 'glow-emerald') s.boxShadow = '0 0 20px -3px rgba(16, 185, 129, 0.4)';
 
+    // Motion & Animation Engine
+    if (styles.motion && styles.motion.effect && styles.motion.effect !== 'none') {
+      const m = styles.motion;
+      const easing = m.easing === 'bounce' ? 'cubic-bezier(0.34, 1.56, 0.64, 1)' : m.easing || 'ease-out';
+      const animName = `appforge-${m.effect}`;
+      const count = m.trigger === 'infinite' ? 'infinite' : (m.iterationCount || '1');
+      if (m.trigger === 'onMount' || m.trigger === 'infinite') {
+        s.animation = `${animName} ${m.duration || 400}ms ${easing} ${m.delay || 0}ms ${count} both`;
+      }
+    }
+
     return s;
   };
 

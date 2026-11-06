@@ -149,7 +149,56 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
   };
 
   const handleElementClick = (element: CanvasElement) => {
-    // Check modern interactions
+    // 1. Direct "When Clicked / Link To" setting (Play-to-Build zero-code action)
+    if (element.props.whenClicked && element.props.whenClicked !== 'none') {
+      switch (element.props.whenClicked) {
+        case 'openPage': {
+          if (element.props.targetPageId) {
+            const target = project.pages.find((p) => p.id === element.props.targetPageId);
+            if (target) {
+              setActivePageId(target.id);
+              showToast(`Navigated to: ${target.name}`, 'info');
+              log(element.name, `Navigated to screen "${target.name}" (${target.path})`, 'navigation', 'success');
+              return;
+            } else {
+              showToast('Linked destination screen does not exist', 'error');
+              log(element.name, 'Navigation failed: linked destination screen does not exist', 'navigation', 'error');
+              return;
+            }
+          }
+          break;
+        }
+        case 'openUrl': {
+          if (element.props.targetUrl) {
+            window.open(element.props.targetUrl, '_blank', 'noopener,noreferrer');
+            log(element.name, `Opened external URL: ${element.props.targetUrl}`, 'navigation', 'info');
+            return;
+          }
+          break;
+        }
+        case 'showPopup': {
+          setModal({
+            isOpen: true,
+            title: element.props.popupTitle || 'Information Dialog',
+            content: element.props.popupContent || 'Action executed successfully.',
+          });
+          log(element.name, `Opened modal dialog "${element.props.popupTitle || 'Notice'}"`, 'modal', 'info');
+          return;
+        }
+        case 'showToast': {
+          showToast(element.props.toastMessage || 'Action successful!', 'info');
+          log(element.name, `Triggered toast: "${element.props.toastMessage || 'Notification'}"`, 'action', 'success');
+          return;
+        }
+        case 'submitForm': {
+          showToast('Form submitted successfully!', 'success');
+          log(element.name, 'Form submitted and validated', 'form', 'success');
+          return;
+        }
+      }
+    }
+
+    // 2. Multi-step interaction pipeline
     if (element.interactions && element.interactions.length > 0) {
       const clickInter = element.interactions.find((i) => i.trigger === 'onClick');
       if (clickInter && clickInter.steps.length > 0) {
@@ -202,8 +251,20 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
 
     const { type, props, styles } = element;
 
-    switch (type) {
-      case 'heading': {
+    let motionStyle: React.CSSProperties = {};
+    if (styles.motion && styles.motion.effect && styles.motion.effect !== 'none') {
+      const m = styles.motion;
+      const easing = m.easing === 'bounce' ? 'cubic-bezier(0.34, 1.56, 0.64, 1)' : m.easing || 'ease-out';
+      const animName = `appforge-${m.effect}`;
+      const count = m.trigger === 'infinite' ? 'infinite' : (m.iterationCount || '1');
+      if (m.trigger === 'onMount' || m.trigger === 'infinite') {
+        motionStyle.animation = `${animName} ${m.duration || 400}ms ${easing} ${m.delay || 0}ms ${count} both`;
+      }
+    }
+
+    const renderNode = () => {
+      switch (type) {
+        case 'heading': {
         const Tag = props.headingLevel || 'h1';
         const sizeClass =
           styles.fontSize === '4xl' ? 'text-4xl' : styles.fontSize === '3xl' ? 'text-3xl' : styles.fontSize === '2xl' ? 'text-2xl' : 'text-xl';
@@ -405,6 +466,16 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
         return null;
     }
   };
+
+  const node = renderNode();
+  if (!node) return null;
+
+  return (
+    <div key={element.id} style={motionStyle} className="w-full">
+      {node}
+    </div>
+  );
+};
 
   return (
     <div className="min-h-screen bg-[#070709] text-zinc-100 flex flex-col select-none">

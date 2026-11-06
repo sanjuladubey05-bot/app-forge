@@ -12,7 +12,9 @@ import {
   LeftPanelTab,
   BottomDrawerTab,
   PageTransition,
-  AppExecutionLog
+  AppExecutionLog,
+  WorkspaceMode,
+  StudioTheme
 } from './types/editor';
 import { 
   createInitialProject, 
@@ -52,11 +54,17 @@ import { BottomPanel } from './components/BottomPanel';
 import { PreviewMode } from './components/PreviewMode';
 import { ProjectCreateModal } from './components/ProjectCreateModal';
 import { ExportModal } from './components/ExportModal';
+import { CommandPalette } from './components/CommandPalette';
+import { DataStudio } from './components/DataStudio';
+import { TutorialQuestWidget } from './components/TutorialQuestWidget';
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>(() => getStoredProjects());
   const [activeProjectId, setActiveId] = useState<string | null>(() => getActiveProjectId());
   const [view, setView] = useState<'dashboard' | 'editor' | 'preview'>('dashboard');
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('design');
+  const [theme, setTheme] = useState<StudioTheme>('dark');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [leftTab, setLeftTab] = useState<LeftPanelTab>('components');
   const [bottomTab, setBottomTab] = useState<BottomDrawerTab>('logic');
@@ -159,9 +167,33 @@ export default function App() {
     handleLogExecution('Redo', 'Reapplied action', 'action', 'info');
   }, [future, activeProject, handleLogExecution]);
 
-  // Keyboard shortcut listener for Undo / Redo
+  // Keyboard shortcut listener for Undo / Redo & Command Palette & Modes
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Command Palette (Ctrl+K or Cmd+K)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Mode switching (Alt+1, Alt+2, Alt+3)
+      if (e.altKey && e.key === '1') {
+        e.preventDefault();
+        setWorkspaceMode('design');
+        return;
+      } else if (e.altKey && e.key === '2') {
+        e.preventDefault();
+        setWorkspaceMode('logic');
+        setBottomTab('logic');
+        return;
+      } else if (e.altKey && e.key === '3') {
+        e.preventDefault();
+        setWorkspaceMode('data');
+        return;
+      }
+
+      // Undo / Redo
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
@@ -203,12 +235,15 @@ export default function App() {
 
   const handleQuickCreate = (templateId: string) => {
     const titles: Record<string, string> = {
+      practice: 'Practice Project (Play-to-Build)',
       saas: 'Executive Analytics Hub',
+      mobile: 'Mobile Commerce App',
       contact: 'Enterprise Lead Portal',
       card: 'Product Showcase Card',
       blank: 'Blank Canvas App',
     };
-    handleCreateProject(titles[templateId] || 'New AppForge App', templateId, 'desktop');
+    const viewport: ViewportMode = templateId === 'mobile' ? 'mobile' : 'desktop';
+    handleCreateProject(titles[templateId] || 'New AppForge App', templateId, viewport);
   };
 
   const handleDeleteProject = (id: string) => {
@@ -280,6 +315,22 @@ export default function App() {
     applyProjectMutation((proj) => addElement(proj, newEl, targetContainerId));
     setSelectedElementId(newEl.id);
     handleLogExecution('Library', `Added ${newEl.name} to active screen`, 'action', 'success');
+  };
+
+  const handleAddSection = (sectionElements: CanvasElement[]) => {
+    applyProjectMutation((proj) => {
+      const active = getActivePage(proj);
+      const updatedElements = [...active.elements, ...sectionElements];
+      return {
+        ...proj,
+        pages: proj.pages.map((p) => (p.id === active.id ? { ...p, elements: updatedElements } : p)),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    handleLogExecution('Section Library', `Inserted prebuilt section (${sectionElements.length} elements)`, 'action', 'success');
+    if (sectionElements.length > 0) {
+      setSelectedElementId(sectionElements[0].id);
+    }
   };
 
   const handleUpdateElement = (id: string, updates: Partial<CanvasElement>) => {
@@ -385,7 +436,7 @@ export default function App() {
   const selectedElement = activePage.elements.find((el) => el.id === selectedElementId) || null;
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 overflow-hidden select-none">
+    <div className={`h-screen w-screen flex flex-col ${theme === 'light' ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-950 text-zinc-100'} overflow-hidden select-none`}>
       {/* 1. Top Toolbar */}
       <TopToolbar
         projectName={activeProject.name}
@@ -417,66 +468,89 @@ export default function App() {
         onOpenExport={() => setIsExportModalOpen(true)}
         isSaving={isSaving}
         lastSavedText={lastSavedText}
+        workspaceMode={workspaceMode}
+        onChangeWorkspaceMode={(mode) => {
+          setWorkspaceMode(mode);
+          if (mode === 'logic') {
+            setBottomTab('logic');
+          }
+          handleLogExecution('Mode', `Switched workspace to ${mode.toUpperCase()} mode`, 'action', 'info');
+        }}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        theme={theme}
+        onToggleTheme={() => {
+          setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+          handleLogExecution('Theme', `Toggled studio theme`, 'action', 'info');
+        }}
       />
 
-      {/* 2. Middle Work Area: LeftSidebar + CanvasArea + PropertiesPanel */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
-        {/* Left Sidebar (Components, Pages, Layers, Assets) */}
-        <LeftSidebar
+      {/* 2. Middle Work Area */}
+      {workspaceMode === 'data' ? (
+        <DataStudio
           project={activeProject}
-          activeTab={leftTab}
-          onChangeTab={setLeftTab}
-          selectedElementId={selectedElementId}
-          onSelectElement={setSelectedElementId}
-          onAddComponent={handleAddComponent}
-          onSwitchPage={handleSwitchPage}
-          onCreatePage={handleCreatePage}
-          onDuplicatePage={handleDuplicatePage}
-          onDeletePage={handleDeletePage}
-          onRenamePage={handleRenamePage}
-          onSetHomePage={handleSetHomePage}
-          onUpdatePageTransition={handleUpdatePageTransition}
-          onMoveElement={handleMoveElement}
-          onToggleVisibility={handleToggleVisibility}
-          onToggleLock={handleToggleLock}
-          onDeleteElement={handleDeleteElement}
-          onDuplicateElement={handleDuplicateElement}
-          onRenameElement={handleRenameElement}
-          onGroupSelected={handleGroupSelected}
-          onUngroupContainer={handleUngroupContainer}
+          onUpdateProject={(updates) => applyProjectMutation((proj) => ({ ...proj, ...updates }))}
+          onLogExecution={handleLogExecution}
         />
+      ) : (
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          {/* Left Sidebar (Components, Pages, Layers, Assets) */}
+          <LeftSidebar
+            project={activeProject}
+            activeTab={leftTab}
+            onChangeTab={setLeftTab}
+            selectedElementId={selectedElementId}
+            onSelectElement={setSelectedElementId}
+            onAddComponent={handleAddComponent}
+            onAddSection={handleAddSection}
+            onSwitchPage={handleSwitchPage}
+            onCreatePage={handleCreatePage}
+            onDuplicatePage={handleDuplicatePage}
+            onDeletePage={handleDeletePage}
+            onRenamePage={handleRenamePage}
+            onSetHomePage={handleSetHomePage}
+            onUpdatePageTransition={handleUpdatePageTransition}
+            onMoveElement={handleMoveElement}
+            onToggleVisibility={handleToggleVisibility}
+            onToggleLock={handleToggleLock}
+            onDeleteElement={handleDeleteElement}
+            onDuplicateElement={handleDuplicateElement}
+            onRenameElement={handleRenameElement}
+            onGroupSelected={handleGroupSelected}
+            onUngroupContainer={handleUngroupContainer}
+          />
 
-        {/* Central Canvas Area */}
-        <CanvasArea
-          activePage={activePage}
-          elements={activePage.elements}
-          selectedElementId={selectedElementId}
-          onSelectElement={setSelectedElementId}
-          onDeleteElement={handleDeleteElement}
-          onDuplicateElement={handleDuplicateElement}
-          onMoveElement={handleMoveElement}
-          onDropComponent={(type, targetContainerId) => handleAddComponent(type, undefined, targetContainerId)}
-          onGroupSelected={handleGroupSelected}
-          viewport={activeProject.viewport}
-          zoom={activeProject.zoom}
-          canvasBg={activeProject.canvasBg}
-          canvasPadding={activeProject.canvasPadding}
-        />
+          {/* Central Canvas Area */}
+          <CanvasArea
+            activePage={activePage}
+            elements={activePage.elements}
+            selectedElementId={selectedElementId}
+            onSelectElement={setSelectedElementId}
+            onDeleteElement={handleDeleteElement}
+            onDuplicateElement={handleDuplicateElement}
+            onMoveElement={handleMoveElement}
+            onDropComponent={(type, targetContainerId) => handleAddComponent(type, undefined, targetContainerId)}
+            onGroupSelected={handleGroupSelected}
+            viewport={activeProject.viewport}
+            zoom={activeProject.zoom}
+            canvasBg={activeProject.canvasBg}
+            canvasPadding={activeProject.canvasPadding}
+          />
 
-        {/* Right Properties Panel */}
-        <PropertiesPanel
-          selectedElement={selectedElement}
-          project={activeProject}
-          onUpdateElement={handleUpdateElement}
-          onUpdateProjectSettings={(settings) => {
-            applyProjectMutation((proj) => ({ ...proj, ...settings }));
-          }}
-          onDeleteElement={handleDeleteElement}
-          onDuplicateElement={handleDuplicateElement}
-          onToggleVisibility={handleToggleVisibility}
-          onToggleLock={handleToggleLock}
-        />
-      </div>
+          {/* Right Properties Panel */}
+          <PropertiesPanel
+            selectedElement={selectedElement}
+            project={activeProject}
+            onUpdateElement={handleUpdateElement}
+            onUpdateProjectSettings={(settings) => {
+              applyProjectMutation((proj) => ({ ...proj, ...settings }));
+            }}
+            onDeleteElement={handleDeleteElement}
+            onDuplicateElement={handleDuplicateElement}
+            onToggleVisibility={handleToggleVisibility}
+            onToggleLock={handleToggleLock}
+          />
+        </div>
+      )}
 
       {/* 3. Bottom Panel (Logic Flowchart, Logs & Console, Diagnostic Tests) */}
       <BottomPanel
@@ -502,6 +576,35 @@ export default function App() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateProject}
+      />
+
+      {/* Command Palette (Ctrl+K) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        pages={activeProject.pages}
+        onSwitchPage={handleSwitchPage}
+        onAddComponent={handleAddComponent}
+        workspaceMode={workspaceMode}
+        onChangeMode={(mode) => {
+          setWorkspaceMode(mode);
+          if (mode === 'logic') setBottomTab('logic');
+        }}
+        onOpenPreview={() => setView('preview')}
+        onOpenExport={() => setIsExportModalOpen(true)}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        isDark={theme === 'dark'}
+      />
+
+      {/* Play-to-Build Interactive Tutorial Quests */}
+      <TutorialQuestWidget
+        project={activeProject}
+        selectedElement={selectedElement}
+        isPreviewing={view === 'preview'}
+        onNavigateTab={(tab) => setLeftTab(tab)}
+        onOpenPreview={() => setView('preview')}
       />
     </div>
   );

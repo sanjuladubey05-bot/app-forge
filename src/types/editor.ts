@@ -35,6 +35,20 @@ export interface ComponentProps {
   tableHeaders?: string[];
   tableRows?: string[][];
   subtext?: string;
+  // Simple "When Clicked" / Link To interaction bindings
+  whenClicked?: 'none' | 'openPage' | 'openUrl' | 'showPopup' | 'showToast' | 'submitForm';
+  targetPageId?: string;
+  targetUrl?: string;
+  popupTitle?: string;
+  popupContent?: string;
+  toastMessage?: string;
+  buttonText?: string;
+  buttonSize?: 'sm' | 'md' | 'lg';
+  inputLabel?: string;
+  rows?: number;
+  title?: string;
+  content?: string;
+  altText?: string;
   // Container props
   direction?: 'column' | 'row';
   gap?: 'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -99,13 +113,108 @@ export interface ComponentStyles {
   shadow?: 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'inner' | 'glow-blue' | 'glow-emerald';
   shadowColor?: string;
 
-  // Animations
+  // Motion & Animation System
+  motion?: MotionSettings;
+
+  // Animations (legacy compatibility)
   animationMount?: 'none' | 'fade-in' | 'slide-up' | 'scale-up' | 'pulse';
   animationHover?: 'none' | 'lift' | 'scale' | 'glow';
 
   // Responsive Visibility
   hideOnMobile?: boolean;
   hideOnDesktop?: boolean;
+}
+
+export type MotionEffect = 
+  | 'none' 
+  // Entrance Presets
+  | 'fade' 
+  | 'fade-in'
+  | 'zoom-in'
+  | 'scale'
+  | 'slide-up' 
+  | 'slide-down' 
+  | 'slide-left' 
+  | 'slide-right' 
+  | 'bounce-in'
+  | 'flip-in'
+  | 'rotate-in'
+  // Exit Presets
+  | 'fade-out'
+  | 'zoom-out'
+  | 'slide-up-out'
+  | 'slide-down-out'
+  | 'slide-left-out'
+  | 'slide-right-out'
+  | 'bounce-out'
+  | 'flip-out'
+  | 'rotate-out'
+  // Continuous & Emphasis
+  | 'bounce' 
+  | 'rotate' 
+  | 'pulse' 
+  | 'flip';
+
+export type MotionCategory = 'entrance' | 'exit' | 'emphasis';
+export type MotionPresetView = 'pairs' | 'all' | 'entrance' | 'exit' | 'emphasis';
+
+export interface MotionPresetItem {
+  id: MotionEffect;
+  name: string;
+  category: MotionCategory;
+  description: string;
+  defaultDuration: number;
+  defaultEasing: MotionEasing | string;
+  defaultTrigger: 'onMount' | 'onHover' | 'onClick' | 'infinite';
+}
+
+export interface MotionPresetPair {
+  family: string;
+  entrance: MotionPresetItem;
+  exit: MotionPresetItem;
+}
+
+export type MotionEasing = 
+  | 'ease' 
+  | 'linear' 
+  | 'ease-in' 
+  | 'ease-out' 
+  | 'ease-in-out' 
+  | 'bounce';
+
+export interface MotionSettings {
+  effect: MotionEffect;
+  duration: number; // in milliseconds (e.g. 100 to 3000)
+  easing: MotionEasing | string; // e.g. 'ease-out', 'linear', or cubic-bezier
+  delay: number; // in milliseconds (e.g. 0 to 2000)
+  trigger: 'onMount' | 'onHover' | 'onClick' | 'infinite';
+  iterationCount?: '1' | '2' | '3' | 'infinite';
+}
+
+export type WorkspaceMode = 'design' | 'logic' | 'data';
+export type StudioTheme = 'dark' | 'light';
+
+export interface DataField {
+  id: string;
+  name: string;
+  type: 'text' | 'number' | 'boolean' | 'date' | 'email' | 'status';
+  required?: boolean;
+}
+
+export interface DataCollection {
+  id: string;
+  name: string;
+  description?: string;
+  fields: DataField[];
+  records: Record<string, any>[];
+}
+
+export interface AppVariable {
+  id: string;
+  name: string;
+  type: 'string' | 'number' | 'boolean';
+  defaultValue: any;
+  currentValue: any;
 }
 
 // Action & Event System (Action Builder & Pipeline)
@@ -198,11 +307,14 @@ export interface Project {
   pages: Page[];
   activePageId: string;
   homePageId: string;
+  // Data Mode & Backend Studio
+  collections?: DataCollection[];
+  variables?: AppVariable[];
   // Legacy backward-compatibility
   elements?: CanvasElement[];
 }
 
-export type LeftPanelTab = 'components' | 'pages' | 'layers' | 'assets';
+export type LeftPanelTab = 'components' | 'sections' | 'pages' | 'layers' | 'assets' | 'tutorial';
 export type BottomDrawerTab = 'logic' | 'logs' | 'test';
 
 export interface AppExecutionLog {

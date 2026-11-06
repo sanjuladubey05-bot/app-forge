@@ -45,6 +45,7 @@ import {
   Project 
 } from '../types/editor';
 import { getActivePage } from '../utils/project-engine';
+import { PREBUILT_SECTIONS, PrebuiltSection, SectionCategory } from '../utils/section-library';
 
 interface LeftSidebarProps {
   project: Project;
@@ -53,6 +54,7 @@ interface LeftSidebarProps {
   selectedElementId: string | null;
   onSelectElement: (id: string | null) => void;
   onAddComponent: (type: ComponentType, customProps?: Record<string, any>) => void;
+  onAddSection?: (elements: CanvasElement[]) => void;
   // Multi-page handlers
   onSwitchPage: (pageId: string) => void;
   onCreatePage: (name: string, path?: string, transition?: PageTransition) => void;
@@ -79,6 +81,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   selectedElementId,
   onSelectElement,
   onAddComponent,
+  onAddSection,
   onSwitchPage,
   onCreatePage,
   onDuplicatePage,
@@ -96,6 +99,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onUngroupContainer,
 }) => {
   const [componentSearch, setComponentSearch] = useState('');
+  const [sectionSearch, setSectionSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const [newPageName, setNewPageName] = useState('');
   const [isCreatingPage, setIsCreatingPage] = useState(false);
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
@@ -321,6 +326,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <nav aria-label="Editor panels" className="w-12 border-r border-zinc-800 bg-zinc-950 flex flex-col items-center py-3 gap-2 shrink-0">
         {[
           { id: 'components' as LeftPanelTab, label: 'Components', icon: Box },
+          { id: 'sections' as LeftPanelTab, label: 'Sections', icon: Sparkles, badge: PREBUILT_SECTIONS.length },
           { id: 'pages' as LeftPanelTab, label: 'Pages', icon: FileCode2, badge: project.pages.length },
           { id: 'layers' as LeftPanelTab, label: 'Layers', icon: LayersIcon, badge: activePage.elements.length },
           { id: 'assets' as LeftPanelTab, label: 'Assets', icon: ImageIcon },
@@ -426,6 +432,112 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ================= SECTIONS LIBRARY TAB ================= */}
+        {activeTab === 'sections' && (
+          <div className="flex flex-col h-full">
+            <div className="p-3 border-b border-zinc-800">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  Section Library
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono flex items-center gap-1">
+                  <Sparkles size={11} className="text-amber-400" />
+                  14 Prebuilt
+                </span>
+              </div>
+
+              {/* Search */}
+              <div className="relative mb-2.5">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Search sections (e.g. hero, pricing)..."
+                  value={sectionSearch}
+                  onChange={(e) => setSectionSearch(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'website', label: 'Website' },
+                  { id: 'content', label: 'Content' },
+                  { id: 'business', label: 'Business' },
+                  { id: 'account', label: 'Account' },
+                  { id: 'application', label: 'App UI' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition cursor-pointer ${
+                      activeCategory === cat.id
+                        ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sections List */}
+            <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
+              {PREBUILT_SECTIONS.filter((sec) => {
+                const matchesCat = activeCategory === 'all' || sec.category === activeCategory;
+                const matchesSearch =
+                  sec.name.toLowerCase().includes(sectionSearch.toLowerCase()) ||
+                  sec.description.toLowerCase().includes(sectionSearch.toLowerCase()) ||
+                  sec.categoryLabel.toLowerCase().includes(sectionSearch.toLowerCase());
+                return matchesCat && matchesSearch;
+              }).map((sec) => (
+                <div
+                  key={sec.id}
+                  className="p-3 rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800/60 hover:border-zinc-700 transition shadow-xs flex flex-col justify-between group space-y-2.5"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="text-xs font-semibold text-zinc-200 group-hover:text-white">
+                        {sec.name}
+                      </span>
+                      {sec.badge && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/30">
+                          {sec.badge}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-zinc-400 leading-snug line-clamp-2">
+                      {sec.description}
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[9px] font-mono text-zinc-500">
+                      <span className="px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-400">
+                        {sec.categoryLabel}
+                      </span>
+                      <span>• Editable elements</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onAddSection) {
+                        onAddSection(sec.elements());
+                      }
+                    }}
+                    className="w-full py-1.5 px-3 rounded-lg bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md shadow-blue-600/10 active:scale-[0.98]"
+                  >
+                    <Plus size={13} />
+                    <span>Add to Canvas</span>
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         )}

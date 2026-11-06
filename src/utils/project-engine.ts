@@ -255,8 +255,49 @@ export function createNewElement(type: ComponentType): CanvasElement {
   };
 }
 
-// Ensure backwards compatibility with projects that stored flat elements[]
+// Ensure backwards compatibility with projects that stored flat elements[] and data collections
 export function ensureProjectPages(project: Project): Project {
+  const defaultCollections = project.collections && project.collections.length > 0 ? project.collections : [
+    {
+      id: 'col_users',
+      name: 'Users',
+      description: 'Application user directory and member profiles',
+      fields: [
+        { id: 'f_name', name: 'Full Name', type: 'text' as const, required: true },
+        { id: 'f_email', name: 'Email Address', type: 'email' as const, required: true },
+        { id: 'f_role', name: 'Role', type: 'text' as const },
+        { id: 'f_status', name: 'Status', type: 'status' as const },
+      ],
+      records: [
+        { id: 'rec_1', f_name: 'Alex Rivera', f_email: 'alex@appforge.io', f_role: 'Administrator', f_status: 'Active' },
+        { id: 'rec_2', f_name: 'Elena Rostova', f_email: 'elena@client.com', f_role: 'Product Lead', f_status: 'Active' },
+        { id: 'rec_3', f_name: 'Marcus Chen', f_email: 'marcus@partner.org', f_role: 'Analyst', f_status: 'Pending' },
+      ],
+    },
+    {
+      id: 'col_products',
+      name: 'Products & Inventory',
+      description: 'Product catalog, pricing tiers, and stock availability',
+      fields: [
+        { id: 'f_title', name: 'Product Name', type: 'text' as const, required: true },
+        { id: 'f_price', name: 'Price ($)', type: 'number' as const, required: true },
+        { id: 'f_stock', name: 'Stock Count', type: 'number' as const },
+        { id: 'f_category', name: 'Category', type: 'text' as const },
+      ],
+      records: [
+        { id: 'rec_p1', f_title: 'Enterprise Platform Pro', f_price: 199, f_stock: 500, f_category: 'Software' },
+        { id: 'rec_p2', f_title: 'Custom Integration Setup', f_price: 850, f_stock: 25, f_category: 'Services' },
+        { id: 'rec_p3', f_title: 'Dedicated Cloud Relay 1TB', f_price: 49, f_stock: 1200, f_category: 'Cloud' },
+      ],
+    },
+  ];
+
+  const defaultVariables = project.variables && project.variables.length > 0 ? project.variables : [
+    { id: 'var_app_title', name: 'appName', type: 'string' as const, defaultValue: 'AppForge Platform', currentValue: 'AppForge Platform' },
+    { id: 'var_auth_state', name: 'isAuthenticated', type: 'boolean' as const, defaultValue: true, currentValue: true },
+    { id: 'var_cart_total', name: 'cartTotal', type: 'number' as const, defaultValue: 0, currentValue: 199 },
+  ];
+
   if (project.pages && project.pages.length > 0) {
     const activeExists = project.pages.some((p) => p.id === project.activePageId);
     const homeExists = project.pages.some((p) => p.id === project.homePageId);
@@ -264,6 +305,8 @@ export function ensureProjectPages(project: Project): Project {
       ...project,
       activePageId: activeExists ? project.activePageId : project.pages[0].id,
       homePageId: homeExists ? project.homePageId : project.pages[0].id,
+      collections: defaultCollections,
+      variables: defaultVariables,
     };
   }
 
@@ -283,6 +326,8 @@ export function ensureProjectPages(project: Project): Project {
     pages: [homePage],
     activePageId: homePage.id,
     homePageId: homePage.id,
+    collections: defaultCollections,
+    variables: defaultVariables,
   };
 }
 
@@ -481,6 +526,73 @@ export function createInitialProject(name: string, templateId?: string): Project
             ],
           },
         ],
+      },
+    ];
+  } else if (templateId === 'practice') {
+    homeElements = [
+      {
+        ...createNewElement('badge'),
+        props: { text: '🎯 Guided Practice Project', badgeVariant: 'info' },
+      },
+      {
+        ...createNewElement('heading'),
+        props: {
+          text: 'Learn AppForge in 5 Minutes',
+          headingLevel: 'h1',
+          subtext: 'Follow the 6 interactive missions on your screen to master drag-and-drop, multi-page links, and instant preview.',
+        },
+      },
+      {
+        ...createNewElement('button'),
+        name: 'Profile Navigation Button',
+        props: { 
+          text: 'Go to My Profile →', 
+          buttonVariant: 'primary',
+          whenClicked: 'none',
+        },
+      },
+      {
+        ...createNewElement('text'),
+        props: {
+          text: '💡 Tip: Select the button above, open the Props tab on the right, and set "When Clicked" to "Open Page" -> "Profile".',
+        },
+        styles: {
+          fontSize: 'sm',
+          textColor: '#93c5fd',
+        },
+      },
+    ];
+  } else if (templateId === 'mobile') {
+    homeElements = [
+      {
+        ...createNewElement('badge'),
+        props: { text: '📱 Mobile Native Experience', badgeVariant: 'info' },
+      },
+      {
+        ...createNewElement('heading'),
+        props: {
+          text: 'Pocket Commerce',
+          headingLevel: 'h2',
+          subtext: 'Discover curated digital goods and manage your mobile wallet.',
+        },
+      },
+      {
+        ...createNewElement('card'),
+        name: 'Product Card',
+        props: {
+          title: 'Premium Member Pass',
+          subtext: 'Instant access to all digital tools and fast checkouts.',
+        },
+      },
+      {
+        ...createNewElement('button'),
+        name: 'Mobile Action Button',
+        props: { 
+          text: 'View Pass Details', 
+          buttonVariant: 'primary',
+          whenClicked: 'showToast',
+          toastMessage: 'Pass details loaded!',
+        },
       },
     ];
   } else {
@@ -854,52 +966,71 @@ export function updateElement(
   updates: Partial<CanvasElement>
 ): Project {
   const proj = ensureProjectPages(project);
-  const activePage = getActivePage(proj);
+  // Locate which page owns this element
+  const owningPage = proj.pages.find((p) => findElementDeep(p.elements, elementId) !== null);
+  const targetPageId = owningPage ? owningPage.id : proj.activePageId;
 
-  const newElements = updateElementDeep(activePage.elements, elementId, updates);
-  const updatedPages = proj.pages.map((p) =>
-    p.id === activePage.id ? { ...p, elements: newElements } : p
-  );
+  const updatedPages = proj.pages.map((p) => {
+    if (p.id !== targetPageId) return p;
+    return {
+      ...p,
+      elements: updateElementDeep(p.elements, elementId, updates),
+    };
+  });
+
+  const activePage = updatedPages.find((p) => p.id === proj.activePageId) || updatedPages[0];
 
   return {
     ...proj,
     updatedAt: new Date().toISOString(),
     pages: updatedPages,
-    elements: newElements,
+    elements: activePage.elements,
   };
 }
 
 export function deleteElement(project: Project, elementId: string): Project {
   const proj = ensureProjectPages(project);
-  const activePage = getActivePage(proj);
+  const owningPage = proj.pages.find((p) => findElementDeep(p.elements, elementId) !== null);
+  const targetPageId = owningPage ? owningPage.id : proj.activePageId;
 
-  const newElements = deleteElementDeep(activePage.elements, elementId);
-  const updatedPages = proj.pages.map((p) =>
-    p.id === activePage.id ? { ...p, elements: newElements } : p
-  );
+  const updatedPages = proj.pages.map((p) => {
+    if (p.id !== targetPageId) return p;
+    return {
+      ...p,
+      elements: deleteElementDeep(p.elements, elementId),
+    };
+  });
+
+  const activePage = updatedPages.find((p) => p.id === proj.activePageId) || updatedPages[0];
 
   return {
     ...proj,
     updatedAt: new Date().toISOString(),
     pages: updatedPages,
-    elements: newElements,
+    elements: activePage.elements,
   };
 }
 
 export function duplicateElement(project: Project, elementId: string): Project {
   const proj = ensureProjectPages(project);
-  const activePage = getActivePage(proj);
+  const owningPage = proj.pages.find((p) => findElementDeep(p.elements, elementId) !== null);
+  const targetPageId = owningPage ? owningPage.id : proj.activePageId;
 
-  const newElements = duplicateElementDeep(activePage.elements, elementId);
-  const updatedPages = proj.pages.map((p) =>
-    p.id === activePage.id ? { ...p, elements: newElements } : p
-  );
+  const updatedPages = proj.pages.map((p) => {
+    if (p.id !== targetPageId) return p;
+    return {
+      ...p,
+      elements: duplicateElementDeep(p.elements, elementId),
+    };
+  });
+
+  const activePage = updatedPages.find((p) => p.id === proj.activePageId) || updatedPages[0];
 
   return {
     ...proj,
     updatedAt: new Date().toISOString(),
     pages: updatedPages,
-    elements: newElements,
+    elements: activePage.elements,
   };
 }
 
@@ -925,15 +1056,25 @@ export function reorderElements(
 }
 
 export function toggleElementVisibility(project: Project, elementId: string): Project {
-  const target = findElementDeep(getActivePage(project).elements, elementId);
-  if (!target) return project;
-  return updateElement(project, elementId, { hidden: !target.hidden });
+  const proj = ensureProjectPages(project);
+  for (const p of proj.pages) {
+    const target = findElementDeep(p.elements, elementId);
+    if (target) {
+      return updateElement(project, elementId, { hidden: !target.hidden });
+    }
+  }
+  return project;
 }
 
 export function toggleElementLock(project: Project, elementId: string): Project {
-  const target = findElementDeep(getActivePage(project).elements, elementId);
-  if (!target) return project;
-  return updateElement(project, elementId, { locked: !target.locked });
+  const proj = ensureProjectPages(project);
+  for (const p of proj.pages) {
+    const target = findElementDeep(p.elements, elementId);
+    if (target) {
+      return updateElement(project, elementId, { locked: !target.locked });
+    }
+  }
+  return project;
 }
 
 // ----------------------------------------------------

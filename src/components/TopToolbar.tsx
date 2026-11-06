@@ -16,9 +16,15 @@ import {
   FileCode2,
   ChevronDown,
   Plus,
-  Home
+  Home,
+  Layout,
+  GitBranch,
+  Database,
+  Search,
+  Sun,
+  Moon
 } from 'lucide-react';
-import { Page, ViewportMode } from '../types/editor';
+import { Page, ViewportMode, WorkspaceMode, StudioTheme } from '../types/editor';
 
 interface TopToolbarProps {
   projectName: string;
@@ -42,6 +48,11 @@ interface TopToolbarProps {
   onOpenExport: () => void;
   isSaving: boolean;
   lastSavedText: string;
+  workspaceMode: WorkspaceMode;
+  onChangeWorkspaceMode: (mode: WorkspaceMode) => void;
+  onOpenCommandPalette: () => void;
+  theme: StudioTheme;
+  onToggleTheme: () => void;
 }
 
 export const TopToolbar: React.FC<TopToolbarProps> = ({
@@ -66,6 +77,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onOpenExport,
   isSaving,
   lastSavedText,
+  workspaceMode,
+  onChangeWorkspaceMode,
+  onOpenCommandPalette,
+  theme,
+  onToggleTheme,
 }) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(projectName);
@@ -187,8 +203,50 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         </div>
       </div>
 
-      {/* Middle: Undo / Redo & Viewport Mode & Zoom Controls */}
+      {/* Middle: Workspace Modes (Design, Logic, Data) */}
       <div className="flex items-center gap-2">
+        <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-xs font-medium">
+          <button
+            onClick={() => onChangeWorkspaceMode('design')}
+            title="Design Mode: Visual styling and responsive layouts (Alt+1)"
+            className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
+              workspaceMode === 'design'
+                ? 'bg-blue-600 text-white font-semibold shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Layout size={13} />
+            <span className="hidden md:inline">Design</span>
+          </button>
+          <button
+            onClick={() => onChangeWorkspaceMode('logic')}
+            title="Logic Mode: Visual workflows and interactive triggers (Alt+2)"
+            className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
+              workspaceMode === 'logic'
+                ? 'bg-emerald-600 text-white font-semibold shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <GitBranch size={13} />
+            <span className="hidden md:inline">Logic</span>
+          </button>
+          <button
+            onClick={() => onChangeWorkspaceMode('data')}
+            title="Data Mode: Database collections and reactive state (Alt+3)"
+            className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
+              workspaceMode === 'data'
+                ? 'bg-amber-600 text-white font-semibold shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Database size={13} />
+            <span className="hidden md:inline">Data</span>
+          </button>
+        </div>
+
+        <div className="h-4 w-px bg-zinc-800 hidden lg:block"></div>
+
+        {/* Undo / Redo */}
         <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
           <button
             onClick={onUndo}
@@ -212,7 +270,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
         <div className="h-4 w-px bg-zinc-800 hidden sm:block"></div>
 
-        {/* Viewport switch */}
+        {/* Viewport switch (Desktop, Tablet, Mobile) */}
         <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
           <button
             onClick={() => onChangeViewport('desktop')}
@@ -244,7 +302,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         </div>
 
         {/* Zoom */}
-        <div className="hidden lg:flex items-center bg-zinc-900 border border-zinc-800 rounded-lg px-1.5 py-0.5 text-xs text-zinc-400 gap-1 font-mono">
+        <div className="hidden xl:flex items-center bg-zinc-900 border border-zinc-800 rounded-lg px-1.5 py-0.5 text-xs text-zinc-400 gap-1 font-mono">
           <button
             onClick={() => onChangeZoom(Math.max(50, zoom - 15))}
             className="hover:text-white transition cursor-pointer"
@@ -263,8 +321,30 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         </div>
       </div>
 
-      {/* Right: Save, Preview, Export */}
+      {/* Right: Search + Theme + Save + Preview + Export */}
       <div className="flex items-center gap-2">
+        {/* Quick Search & Command Palette (Ctrl+K) */}
+        <button
+          onClick={onOpenCommandPalette}
+          className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
+          title="Quick Actions (Ctrl+K)"
+        >
+          <Search size={13} />
+          <span className="text-[11px]">Search</span>
+          <kbd className="px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-[10px] font-mono text-zinc-400">
+            ⌘K
+          </kbd>
+        </button>
+
+        {/* Theme Toggle */}
+        <button
+          onClick={onToggleTheme}
+          className="p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
+        >
+          {theme === 'dark' ? <Sun size={13} className="text-amber-400" /> : <Moon size={13} className="text-blue-400" />}
+        </button>
+
         <button
           onClick={onSave}
           disabled={isSaving}

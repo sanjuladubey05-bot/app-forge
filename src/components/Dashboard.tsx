@@ -149,26 +149,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Quick Starter Cards */}
           <div className="mt-6 pt-5 border-t border-zinc-800/80">
-            <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-3">
-              Quick Start from Template
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block">
+                Choose a Starting Point
+              </span>
+              <span className="text-[10px] text-blue-400 font-mono font-medium">Step 1 — Zero Code</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
               {[
-                { id: 'saas', name: 'SaaS Metric Hub', icon: Sparkles, color: 'text-amber-400' },
-                { id: 'contact', name: 'Contact & Lead Portal', icon: FolderGit2, color: 'text-blue-400' },
-                { id: 'card', name: 'Product Showcase Card', icon: Layers, color: 'text-purple-400' },
-                { id: 'blank', name: 'Blank IDE Canvas', icon: Code2, color: 'text-emerald-400' },
+                { id: 'blank', name: 'Start Scratch', desc: 'Empty canvas', icon: Code2, color: 'text-emerald-400' },
+                { id: 'practice', name: 'Practice Project', desc: 'Guided missions', icon: Sparkles, color: 'text-amber-400' },
+                { id: 'saas', name: 'Website Portal', desc: 'Desktop layout', icon: Monitor, color: 'text-blue-400' },
+                { id: 'mobile', name: 'Mobile App', desc: 'Phone layout', icon: Smartphone, color: 'text-purple-400' },
+                { id: 'contact', name: 'Contact Form', desc: 'Lead capture', icon: FolderGit2, color: 'text-rose-400' },
+                { id: 'card', name: 'Product Showcase', desc: 'Card layout', icon: Layers, color: 'text-cyan-400' },
               ].map((tmpl) => {
                 const Icon = tmpl.icon;
                 return (
                   <button
                     key={tmpl.id}
                     onClick={() => onQuickCreate(tmpl.id)}
-                    className="flex items-center gap-2.5 p-3 rounded-xl border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-800/60 hover:border-zinc-700 transition cursor-pointer text-left group"
+                    className="flex flex-col p-2.5 rounded-xl border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-800/60 hover:border-zinc-700 transition cursor-pointer text-left group"
                   >
-                    <Icon size={16} className={`${tmpl.color} group-hover:scale-110 transition`} />
-                    <span className="text-xs font-medium text-zinc-200 group-hover:text-white">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Icon size={16} className={`${tmpl.color} group-hover:scale-110 transition`} />
+                      <span className="text-[9px] font-mono text-zinc-500">1-Click</span>
+                    </div>
+                    <span className="text-xs font-semibold text-zinc-200 group-hover:text-white truncate">
                       {tmpl.name}
+                    </span>
+                    <span className="text-[10px] text-zinc-500 truncate mt-0.5">
+                      {tmpl.desc}
                     </span>
                   </button>
                 );
