@@ -23,7 +23,8 @@ import {
   Search,
   Sun,
   Moon,
-  Keyboard
+  Keyboard,
+  Sparkles
 } from 'lucide-react';
 import { Page, ViewportMode, WorkspaceMode, StudioTheme } from '../types/editor';
 
@@ -47,6 +48,7 @@ interface TopToolbarProps {
   onSave: () => void;
   onOpenPreview: () => void;
   onOpenExport: () => void;
+  onOpenAiStudio?: () => void;
   isSaving: boolean;
   lastSavedText: string;
   workspaceMode: WorkspaceMode;
@@ -77,6 +79,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onSave,
   onOpenPreview,
   onOpenExport,
+  onOpenAiStudio,
   isSaving,
   lastSavedText,
   workspaceMode,
@@ -338,6 +341,22 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             ⌘K
           </kbd>
         </button>
+
+        {/* AI Studio Generator (Ctrl+J) */}
+        {onOpenAiStudio && (
+          <button
+            onClick={onOpenAiStudio}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 hover:text-white transition cursor-pointer text-xs font-medium shadow-xs"
+            title="Google AI Studio Structured Generator (⌘J)"
+            data-testid="toolbar-ai-studio-btn"
+          >
+            <Sparkles size={13} className="text-blue-400" />
+            <span className="hidden lg:inline">AI Studio</span>
+            <kbd className="hidden lg:inline px-1 py-0.2 rounded bg-blue-900/60 border border-blue-700/50 text-[9px] font-mono text-blue-200">
+              ⌘J
+            </kbd>
+          </button>
+        )}
 
         {/* Hotkeys / Shortcuts Manager */}
         {onOpenShortcutsModal && (

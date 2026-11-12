@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Project } from '../types/editor';
 import { exportProjectToHtml, exportProjectToJson } from '../utils/project-engine';
+import { projectToForgeJson } from '../utils/forge-schema';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -18,13 +19,14 @@ interface ExportModalProps {
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, project }) => {
-  const [activeTab, setActiveTab] = useState<'html' | 'json' | 'react'>('html');
+  const [activeTab, setActiveTab] = useState<'html' | 'forge' | 'json' | 'react'>('html');
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
 
   const htmlContent = exportProjectToHtml(project);
   const jsonContent = exportProjectToJson(project);
+  const forgeJsonContent = JSON.stringify(projectToForgeJson(project), null, 2);
 
   const totalComponents = project.pages?.reduce((acc, p) => acc + p.elements.length, 0) || project.elements?.length || 0;
 
@@ -44,7 +46,13 @@ export default function ${project.name.replace(/[^a-zA-Z0-9]/g, '') || 'App'}() 
 }
 `;
 
-  const currentSnippet = activeTab === 'html' ? htmlContent : activeTab === 'json' ? jsonContent : reactContent;
+  const currentSnippet = activeTab === 'html' 
+    ? htmlContent 
+    : activeTab === 'forge'
+    ? forgeJsonContent
+    : activeTab === 'json' 
+    ? jsonContent 
+    : reactContent;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(currentSnippet);
@@ -53,7 +61,11 @@ export default function ${project.name.replace(/[^a-zA-Z0-9]/g, '') || 'App'}() 
   };
 
   const handleDownload = () => {
-    const filename = activeTab === 'json' ? `${project.name.toLowerCase().replace(/\s+/g, '-')}.json` : `${project.name.toLowerCase().replace(/\s+/g, '-')}.html`;
+    const filename = activeTab === 'forge'
+      ? `${project.name.toLowerCase().replace(/\s+/g, '-')}-forge-schema.json`
+      : activeTab === 'json' 
+      ? `${project.name.toLowerCase().replace(/\s+/g, '-')}.json` 
+      : `${project.name.toLowerCase().replace(/\s+/g, '-')}.html`;
     const blob = new Blob([currentSnippet], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -124,6 +136,18 @@ export default function ${project.name.replace(/[^a-zA-Z0-9]/g, '') || 'App'}() 
             <span>Standalone HTML (Tailwind CDN)</span>
           </button>
           <button
+            onClick={() => setActiveTab('forge')}
+            className={`flex items-center gap-1.5 py-2.5 px-3 border-b-2 font-medium transition cursor-pointer ${
+              activeTab === 'forge'
+                ? 'border-blue-500 text-blue-400 font-semibold'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+            data-testid="export-tab-forge-schema"
+          >
+            <FileJson size={13} className="text-blue-400" />
+            <span>Forge Schema JSON (AI Studio)</span>
+          </button>
+          <button
             onClick={() => setActiveTab('json')}
             className={`flex items-center gap-1.5 py-2.5 px-3 border-b-2 font-medium transition cursor-pointer ${
               activeTab === 'json'
@@ -132,7 +156,7 @@ export default function ${project.name.replace(/[^a-zA-Z0-9]/g, '') || 'App'}() 
             }`}
           >
             <FileJson size={13} />
-            <span>AppForge JSON Spec</span>
+            <span>Canvas State JSON</span>
           </button>
           <button
             onClick={() => setActiveTab('react')}

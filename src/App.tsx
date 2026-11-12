@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Project, 
+  Page,
   CanvasElement, 
   ComponentType, 
   ViewportMode, 
@@ -14,7 +15,8 @@ import {
   PageTransition,
   AppExecutionLog,
   WorkspaceMode,
-  StudioTheme
+  StudioTheme,
+  AlignmentType
 } from './types/editor';
 import { 
   createInitialProject, 
@@ -36,7 +38,9 @@ import {
   toggleElementLock,
   groupElementsIntoContainer,
   ungroupContainer,
-  getActivePage
+  getActivePage,
+  getAlignedElementStyles,
+  alignElements
 } from './utils/project-engine';
 import { 
   getStoredProjects, 
@@ -58,6 +62,13 @@ import { CommandPalette } from './components/CommandPalette';
 import { DataStudio } from './components/DataStudio';
 import { TutorialQuestWidget } from './components/TutorialQuestWidget';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { AiStudioModal } from './components/AiStudioModal';
+import { 
+  ForgeNode, 
+  ForgeProject, 
+  forgeNodeToCanvasElement, 
+  forgeJsonToProject 
+} from './utils/forge-schema';
 import { 
   ShortcutActionId, 
   getActiveShortcuts, 
@@ -98,6 +109,7 @@ export default function App() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [isAiStudioModalOpen, setIsAiStudioModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('All changes saved');
 
@@ -366,6 +378,110 @@ export default function App() {
     }, 250);
   };
 
+  // Align Elements (Centering, Anchoring, Distributing)
+  const handleAlignElements = useCallback((alignment: AlignmentType) => {
+    if (!activeProject) return;
+    const activePage = getActivePage(activeProject);
+    if (!activePage || activePage.elements.length === 0) return;
+
+    applyProjectMutation((proj) => {
+      const page = getActivePage(proj);
+      if (!page) return proj;
+
+      if (selectedElementId) {
+        const updateTree = (elements: CanvasElement[]): CanvasElement[] => {
+          return elements.map((el) => {
+            if (el.id === selectedElementId) {
+              return {
+                ...el,
+                styles: getAlignedElementStyles(el.styles, alignment),
+              };
+            }
+            if (el.children && el.children.length > 0) {
+              return {
+                ...el,
+                children: updateTree(el.children),
+              };
+            }
+            return el;
+          });
+        };
+
+        return {
+          ...proj,
+          pages: proj.pages.map((p) =>
+            p.id === page.id ? { ...p, elements: updateTree(p.elements) } : p
+          ),
+        };
+      }
+
+      return {
+        ...proj,
+        pages: proj.pages.map((p) =>
+          p.id === page.id ? { ...p, elements: alignElements(p.elements, alignment) } : p
+        ),
+      };
+    });
+
+    handleLogExecution('Layout', `Applied ${alignment.toUpperCase()} alignment to ${selectedElementId ? 'selected element' : 'page root'}`, 'action', 'success');
+  }, [activeProject, selectedElementId, applyProjectMutation, handleLogExecution]);
+
+  // Insert AI Generated Structured Nodes
+  const handleInsertAiNodes = useCallback((
+    nodes: ForgeNode[], 
+    targetMode: 'append' | 'new-page', 
+    newPageTitle?: string
+  ) => {
+    if (!activeProject || nodes.length === 0) return;
+    const newElements = nodes.map(forgeNodeToCanvasElement);
+
+    if (targetMode === 'new-page') {
+      const title = newPageTitle?.trim() || 'AI Generated Screen';
+      const newPageId = 'page_' + Math.random().toString(36).substring(2, 9);
+      const path = '/' + title.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const newPage: Page = {
+        id: newPageId,
+        name: title,
+        path,
+        elements: newElements,
+        transition: 'fade',
+      };
+      applyProjectMutation((proj) => ({
+        ...proj,
+        pages: [...proj.pages, newPage],
+        activePageId: newPageId,
+      }));
+      setSelectedElementId(newElements[0]?.id || null);
+      handleLogExecution('AI Studio', `Created screen "${title}" with ${nodes.length} element nodes`, 'action', 'success');
+    } else {
+      applyProjectMutation((proj) => {
+        const page = getActivePage(proj);
+        if (!page) return proj;
+        return {
+          ...proj,
+          pages: proj.pages.map((p) =>
+            p.id === page.id ? { ...p, elements: [...p.elements, ...newElements] } : p
+          ),
+        };
+      });
+      setSelectedElementId(newElements[0]?.id || null);
+      handleLogExecution('AI Studio', `Added ${nodes.length} element nodes to active canvas`, 'action', 'success');
+    }
+  }, [activeProject, applyProjectMutation, handleLogExecution]);
+
+  // Bidirectional Forge JSON Project Import
+  const handleImportForgeProject = useCallback((forgeProject: ForgeProject) => {
+    try {
+      const imported = forgeJsonToProject(forgeProject);
+      setProjects((prev) => [imported, ...prev.filter((p) => p.id !== imported.id)]);
+      setActiveId(imported.id);
+      setSelectedElementId(null);
+      handleLogExecution('Schema Hub', `Successfully loaded Forge project: ${forgeProject.appName}`, 'action', 'success');
+    } catch (err: any) {
+      handleLogExecution('Schema Hub', `Forge import failed: ${err.message}`, 'error', 'failed');
+    }
+  }, [handleLogExecution]);
+
   // Resolve active shortcuts (merging defaults, localStorage, and project custom overrides)
   const activeShortcuts = getActiveShortcuts(activeProject);
 
@@ -429,6 +545,13 @@ export default function App() {
       if (matchesShortcut(e, shortcuts.commandPalette)) {
         e.preventDefault();
         setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // 3b. Google AI Studio Modal (Cmd+J / Ctrl+J)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsAiStudioModalOpen((prev) => !prev);
         return;
       }
 
@@ -570,6 +693,7 @@ export default function App() {
         onSave={handleManualSave}
         onOpenPreview={() => setView('preview')}
         onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenAiStudio={() => setIsAiStudioModalOpen(true)}
         isSaving={isSaving}
         lastSavedText={lastSavedText}
         workspaceMode={workspaceMode}
@@ -608,6 +732,7 @@ export default function App() {
               onSelectElement={setSelectedElementId}
               onAddComponent={handleAddComponent}
               onAddSection={handleAddSection}
+              onAlignElements={handleAlignElements}
               onSwitchPage={handleSwitchPage}
               onCreatePage={handleCreatePage}
               onDuplicatePage={handleDuplicatePage}
@@ -661,6 +786,7 @@ export default function App() {
                       handleAddSection(elements);
                       setMobileDrawer('none');
                     }}
+                    onAlignElements={handleAlignElements}
                     onSwitchPage={(id) => {
                       handleSwitchPage(id);
                       setMobileDrawer('none');
@@ -869,12 +995,24 @@ export default function App() {
         }}
         onOpenPreview={() => setView('preview')}
         onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenAiStudio={() => setIsAiStudioModalOpen(true)}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         isDark={theme === 'dark'}
       />
+
+      {/* Google AI Studio Structured Outputs & Generator Modal */}
+      {activeProject && (
+        <AiStudioModal
+          isOpen={isAiStudioModalOpen}
+          onClose={() => setIsAiStudioModalOpen(false)}
+          project={activeProject}
+          onInsertAiNodes={handleInsertAiNodes}
+          onImportForgeProject={handleImportForgeProject}
+        />
+      )}
 
       {/* Play-to-Build Interactive Tutorial Quests (Desktop) */}
       <div className="hidden sm:block">

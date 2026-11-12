@@ -425,3 +425,142 @@ test('UI elements tag filter and search matching', () => {
   // Non-matching term
   assert.equal(filterByQuery('nonexistent_random_xyz').length, 0);
 });
+
+test('getAlignedElementStyles and alignElements precision layout controls', async () => {
+  const { getAlignedElementStyles, alignElements } = await import('./project-engine');
+
+  // 1. Center Horizontally
+  const centerH = getAlignedElementStyles({}, 'center-h');
+  assert.equal(centerH.textAlign, 'center');
+  assert.equal(centerH.alignSelf, 'center');
+  assert.equal(centerH.marginLeft, 'auto');
+  assert.equal(centerH.marginRight, 'auto');
+
+  // 2. Center Vertically
+  const centerV = getAlignedElementStyles({}, 'center-v');
+  assert.equal(centerV.alignSelf, 'center');
+  assert.equal(centerV.marginTop, 'auto');
+  assert.equal(centerV.marginBottom, 'auto');
+
+  // 3. Center Both
+  const centerBoth = getAlignedElementStyles({}, 'center-both');
+  assert.equal(centerBoth.textAlign, 'center');
+  assert.equal(centerBoth.alignSelf, 'center');
+  assert.equal(centerBoth.marginLeft, 'auto');
+  assert.equal(centerBoth.marginRight, 'auto');
+  assert.equal(centerBoth.marginTop, 'auto');
+  assert.equal(centerBoth.marginBottom, 'auto');
+
+  // 4. Anchoring (Left, Right, Top, Bottom, Full)
+  const anchorLeft = getAlignedElementStyles({}, 'anchor-left');
+  assert.equal(anchorLeft.textAlign, 'left');
+  assert.equal(anchorLeft.alignSelf, 'start');
+  assert.equal(anchorLeft.marginLeft, '0px');
+  assert.equal(anchorLeft.marginRight, 'auto');
+
+  const anchorRight = getAlignedElementStyles({}, 'anchor-right');
+  assert.equal(anchorRight.textAlign, 'right');
+  assert.equal(anchorRight.alignSelf, 'end');
+  assert.equal(anchorRight.marginLeft, 'auto');
+  assert.equal(anchorRight.marginRight, '0px');
+
+  const fullWidth = getAlignedElementStyles({}, 'full-width');
+  assert.equal(fullWidth.width, 'full');
+  assert.equal(fullWidth.alignSelf, 'stretch');
+  assert.equal(fullWidth.marginLeft, '0px');
+  assert.equal(fullWidth.marginRight, '0px');
+
+  // 5. Batch alignElements
+  const btn = createNewElement('button');
+  const heading = createNewElement('heading');
+  const aligned = alignElements([btn, heading], 'center-h');
+  assert.equal(aligned.length, 2);
+  assert.equal(aligned[0].styles.alignSelf, 'center');
+  assert.equal(aligned[1].styles.alignSelf, 'center');
+});
+
+test('3-layer Forge Schema: bidirectional serialization and AI Studio Structured Outputs', async () => {
+  const { 
+    projectToForgeJson, 
+    forgeJsonToProject, 
+    canvasElementToForgeNode, 
+    forgeNodeToCanvasElement,
+    FORGE_JSON_SCHEMA_DEFINITION,
+    generateForgeNodesFromPrompt
+  } = await import('./forge-schema');
+
+  // 1. Verify official JSON schema properties
+  assert.equal(FORGE_JSON_SCHEMA_DEFINITION.title, 'ForgeProject');
+  assert.ok(FORGE_JSON_SCHEMA_DEFINITION.definitions.ForgeNode);
+  assert.deepEqual(FORGE_JSON_SCHEMA_DEFINITION.required, [
+    'schemaVersion', 'projectId', 'appName', 'platform', 'theme', 'pages'
+  ]);
+
+  // 2. Create rich project and serialize to 3-layer Forge JSON
+  let project = createInitialProject('Forge SaaS Alpha', 'saas');
+  const forgeJson = projectToForgeJson(project);
+
+  // Layer 1: Project Root
+  assert.equal(forgeJson.schemaVersion, '1.0');
+  assert.equal(forgeJson.appName, 'Forge SaaS Alpha');
+  assert.ok(forgeJson.theme);
+  assert.equal(forgeJson.theme.fontFamily, 'Inter');
+  assert.ok(Array.isArray(forgeJson.pages));
+  assert.ok(forgeJson.pages.length >= 2);
+
+  // Layer 2: Page Object
+  const homePage = forgeJson.pages[0];
+  assert.equal(homePage.id, 'page_home');
+  assert.equal(homePage.route, '/');
+  assert.ok(homePage.root);
+  assert.equal(homePage.root.type, 'Container');
+
+  // Layer 3: Recursive Nodes
+  assert.ok(Array.isArray(homePage.root.children));
+  assert.ok(homePage.root.children.length > 0);
+  const firstChild = homePage.root.children[0];
+  assert.ok(firstChild.id);
+  assert.ok(firstChild.type);
+  assert.ok(firstChild.props);
+  assert.ok(firstChild.styles);
+
+  // 3. Bidirectional deserialization: Forge JSON -> Project
+  const reconstituted = forgeJsonToProject(forgeJson);
+  assert.equal(reconstituted.id, project.id);
+  assert.equal(reconstituted.name, project.name);
+  assert.equal(reconstituted.pages.length, project.pages.length);
+  assert.ok(reconstituted.pages[0].elements.length > 0);
+
+  // 4. Node to CanvasElement bidirectional conversion
+  const testNode = {
+    id: 'test_node_1',
+    type: 'Button',
+    props: { text: 'Book Demo', buttonVariant: 'primary' },
+    styles: { alignSelf: 'center', backgroundColor: '#2563eb' },
+    events: {
+      onClick: { action: 'NAVIGATE' as const, target: 'page_profile' },
+    },
+  };
+  const canvasEl = forgeNodeToCanvasElement(testNode);
+  assert.equal(canvasEl.id, 'test_node_1');
+  assert.equal(canvasEl.type, 'button');
+  assert.equal(canvasEl.props.text, 'Book Demo');
+  assert.equal(canvasEl.props.whenClicked, 'openPage');
+  assert.equal(canvasEl.props.targetPageId, 'page_profile');
+
+  const backToNode = canvasElementToForgeNode(canvasEl);
+  assert.equal(backToNode.id, 'test_node_1');
+  assert.equal(backToNode.type, 'Button');
+  assert.equal(backToNode.props.text, 'Book Demo');
+  assert.equal(backToNode.events?.onClick.action, 'NAVIGATE');
+  assert.equal(backToNode.events?.onClick.target, 'page_profile');
+
+  // 5. Prompt-to-UI Node generation presets
+  const pricingNodes = generateForgeNodesFromPrompt('pricing plans with toggle');
+  assert.ok(pricingNodes.length >= 2, 'Pricing prompt should generate heading and container');
+  assert.equal(pricingNodes[1].children?.length, 3, 'Pricing container should contain 3 tier cards');
+
+  const dashboardNodes = generateForgeNodesFromPrompt('analytics dashboard kpi');
+  assert.ok(dashboardNodes.length >= 3, 'Analytics prompt should generate stats and chart elements');
+});
+

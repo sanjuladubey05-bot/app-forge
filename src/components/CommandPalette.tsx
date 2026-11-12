@@ -15,7 +15,8 @@ import {
   Sun,
   X,
   ArrowRight,
-  Keyboard
+  Keyboard,
+  Sparkles
 } from 'lucide-react';
 import { Page, ComponentType, WorkspaceMode } from '../types/editor';
 
@@ -29,6 +30,7 @@ interface CommandPaletteProps {
   onChangeMode: (mode: WorkspaceMode) => void;
   onOpenPreview: () => void;
   onOpenExport: () => void;
+  onOpenAiStudio?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onOpenShortcutsModal?: () => void;
@@ -56,6 +58,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onChangeMode,
   onOpenPreview,
   onOpenExport,
+  onOpenAiStudio,
   onUndo,
   onRedo,
   onOpenShortcutsModal,
@@ -96,6 +99,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         action: () => onChangeMode('data'),
       },
       // Actions
+      {
+        id: 'action-ai-studio',
+        category: 'Actions',
+        title: 'Google AI Studio Structured Generator',
+        subtitle: 'Prompt-to-UI synthesis, Forge JSON schema inspector, and Hub',
+        icon: <Sparkles size={14} className="text-blue-400" />,
+        shortcut: 'Ctrl+J',
+        action: () => onOpenAiStudio?.(),
+      },
       {
         id: 'action-preview',
         category: 'Actions',

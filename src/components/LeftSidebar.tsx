@@ -473,22 +473,69 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </span>
               </div>
               
-              {/* Search Filter Component with Clear Button */}
+              {/* Search Filter Component with Keyboard Navigation */}
               <div className="space-y-2 mt-2">
                 <div className="relative">
                   <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
                   <input
                     type="text"
-                    placeholder="Search by name or tag (e.g. flex, cta, stat)..."
+                    placeholder="Search elements (↓/↑ navigate, ↵ add)..."
                     value={componentSearch}
-                    onChange={(e) => setComponentSearch(e.target.value)}
+                    onChange={(e) => {
+                      setComponentSearch(e.target.value);
+                      setFocusedItemIndex(0);
+                    }}
+                    onKeyDown={(e) => {
+                      // We will capture this with the flattened list
+                      const q = componentSearch.trim().toLowerCase();
+                      const matchesTag = (tags: string[], sectionId: string) => {
+                        if (selectedTag === 'all') return true;
+                        if (selectedTag === 'layout') return sectionId === 'containers' || tags.includes('layout');
+                        if (selectedTag === 'typography') return sectionId === 'typography' || tags.includes('typography') || tags.includes('text');
+                        if (selectedTag === 'forms') return sectionId === 'forms' || tags.includes('form') || tags.includes('button');
+                        if (selectedTag === 'data') return sectionId === 'data' || tags.includes('data');
+                        return tags.includes(selectedTag);
+                      };
+                      const flatItems = componentSections.flatMap((sec) =>
+                        sec.items.filter((item) => {
+                          const tagOk = matchesTag(item.tags, sec.id);
+                          if (!tagOk) return false;
+                          if (!q) return true;
+                          const matchTitle = item.title.toLowerCase().includes(q);
+                          const matchDesc = item.desc.toLowerCase().includes(q);
+                          const matchTag = item.tags.some((t) => t.toLowerCase().includes(q));
+                          return matchTitle || matchDesc || matchTag;
+                        })
+                      );
+
+                      if (flatItems.length === 0) return;
+
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setFocusedItemIndex((prev) => (prev + 1) % flatItems.length);
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setFocusedItemIndex((prev) => (prev - 1 + flatItems.length) % flatItems.length);
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const target = flatItems[focusedItemIndex] || flatItems[0];
+                        if (target) {
+                          onAddComponent(target.type);
+                        }
+                      } else if (e.key === 'Escape') {
+                        setComponentSearch('');
+                      }
+                    }}
                     className="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-8 pr-7 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition"
                     data-testid="element-search-input"
                   />
                   {componentSearch && (
                     <button
                       type="button"
-                      onClick={() => setComponentSearch('')}
+                      onClick={() => {
+                        setComponentSearch('');
+                        setFocusedItemIndex(0);
+                      }}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white transition p-0.5 cursor-pointer"
                       title="Clear search"
                       data-testid="clear-search-btn"
@@ -510,7 +557,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     <button
                       key={tag.id}
                       type="button"
-                      onClick={() => setSelectedTag(tag.id)}
+                      onClick={() => {
+                        setSelectedTag(tag.id);
+                        setFocusedItemIndex(0);
+                      }}
                       className={`px-2 py-0.5 rounded text-[10px] font-medium transition cursor-pointer ${
                         selectedTag === tag.id
                           ? 'bg-blue-600 text-white font-semibold shadow-xs'
@@ -521,6 +571,152 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       {tag.label}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Align Elements Section */}
+              <div className="mt-3 pt-2.5 border-t border-zinc-800/80 space-y-2" data-testid="align-elements-section">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-300">
+                    Align Elements
+                  </span>
+                  <span className="text-[9px] text-zinc-400 font-mono">
+                    {selectedElementId ? 'Selected Item' : 'Canvas Root'}
+                  </span>
+                </div>
+
+                {/* Centering Controls */}
+                <div className="space-y-1">
+                  <div className="text-[9px] text-zinc-400 font-medium flex items-center justify-between">
+                    <span>Centering</span>
+                    <span className="text-[9px] text-zinc-400 font-mono">X / Y</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('center-h')}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[10px] font-medium transition cursor-pointer"
+                      title="Center Horizontally (auto margins / align-self)"
+                      data-testid="align-btn-center-h"
+                    >
+                      <AlignHorizontalJustifyCenter size={12} className="text-blue-400" />
+                      <span>Center H</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('center-v')}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[10px] font-medium transition cursor-pointer"
+                      title="Center Vertically"
+                      data-testid="align-btn-center-v"
+                    >
+                      <AlignVerticalJustifyCenter size={12} className="text-blue-400" />
+                      <span>Center V</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('center-both')}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[10px] font-medium transition cursor-pointer"
+                      title="Center Both Dimensions"
+                      data-testid="align-btn-center-both"
+                    >
+                      <Crosshair size={12} className="text-cyan-400" />
+                      <span>Both</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Anchoring Controls */}
+                <div className="space-y-1">
+                  <div className="text-[9px] text-zinc-400 font-medium">Anchoring</div>
+                  <div className="grid grid-cols-5 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('anchor-left')}
+                      className="flex flex-col items-center justify-center py-1 px-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Anchor Left"
+                      data-testid="align-btn-anchor-left"
+                    >
+                      <AlignHorizontalJustifyStart size={12} className="text-zinc-400" />
+                      <span className="mt-0.5">Left</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('anchor-right')}
+                      className="flex flex-col items-center justify-center py-1 px-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Anchor Right"
+                      data-testid="align-btn-anchor-right"
+                    >
+                      <AlignHorizontalJustifyEnd size={12} className="text-zinc-400" />
+                      <span className="mt-0.5">Right</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('anchor-top')}
+                      className="flex flex-col items-center justify-center py-1 px-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Anchor Top"
+                      data-testid="align-btn-anchor-top"
+                    >
+                      <AlignVerticalJustifyStart size={12} className="text-zinc-400" />
+                      <span className="mt-0.5">Top</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('anchor-bottom')}
+                      className="flex flex-col items-center justify-center py-1 px-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Anchor Bottom"
+                      data-testid="align-btn-anchor-bottom"
+                    >
+                      <AlignVerticalJustifyEnd size={12} className="text-zinc-400" />
+                      <span className="mt-0.5">Btm</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('full-width')}
+                      className="flex flex-col items-center justify-center py-1 px-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Full Width Stretch"
+                      data-testid="align-btn-full-width"
+                    >
+                      <StretchHorizontal size={12} className="text-indigo-400" />
+                      <span className="mt-0.5">Full</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Distribute & Flow Controls */}
+                <div className="space-y-1">
+                  <div className="text-[9px] text-zinc-400 font-medium">Distribute</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('distribute-h')}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Distribute Horizontally"
+                      data-testid="align-btn-distribute-h"
+                    >
+                      <AlignHorizontalDistributeCenter size={11} className="text-emerald-400" />
+                      <span>Dist H</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('distribute-v')}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Distribute Vertically"
+                      data-testid="align-btn-distribute-v"
+                    >
+                      <AlignVerticalDistributeCenter size={11} className="text-emerald-400" />
+                      <span>Dist V</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onAlignElements?.('space-between')}
+                      className="flex items-center justify-center gap-1 py-1 px-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-800/90 text-[9px] transition cursor-pointer"
+                      title="Even Spacing & Margins"
+                      data-testid="align-btn-space-between"
+                    >
+                      <AlignJustify size={11} className="text-amber-400" />
+                      <span>Spacing</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -551,6 +747,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               }).filter((sec) => sec.items.length > 0);
 
               const totalCount = filteredSections.reduce((acc, sec) => acc + sec.items.length, 0);
+              const flatItems = filteredSections.flatMap((s) => s.items);
 
               if (totalCount === 0) {
                 return (
@@ -569,6 +766,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       onClick={() => {
                         setComponentSearch('');
                         setSelectedTag('all');
+                        setFocusedItemIndex(0);
                       }}
                       className="mt-1 px-3 py-1 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-xs text-blue-400 hover:text-blue-300 transition cursor-pointer"
                       data-testid="clear-filters-empty-btn"
@@ -578,6 +776,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   </div>
                 );
               }
+
+              let globalItemCounter = -1;
 
               return (
                 <div className="flex-1 overflow-y-auto p-2.5 space-y-4" data-testid="component-items-list">
@@ -593,22 +793,44 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       </div>
                       <div className="grid grid-cols-1 gap-1.5">
                         {sec.items.map((item) => {
+                          globalItemCounter++;
+                          const currentFlatIndex = globalItemCounter;
+                          const isKeyboardSelected = currentFlatIndex === focusedItemIndex;
                           const Icon = item.icon;
                           return (
                             <div
                               key={item.type}
-                              onClick={() => onAddComponent(item.type)}
-                              className="group flex items-start justify-between p-2 rounded-xl border border-zinc-800/80 bg-zinc-900/60 hover:bg-zinc-800/80 hover:border-zinc-700 transition cursor-pointer shadow-xs active:scale-[0.98]"
-                              title={`Click to add ${item.title} to canvas`}
+                              onClick={() => {
+                                setFocusedItemIndex(currentFlatIndex);
+                                onAddComponent(item.type);
+                              }}
+                              className={`group flex items-start justify-between p-2 rounded-xl border transition cursor-pointer shadow-xs active:scale-[0.98] ${
+                                isKeyboardSelected
+                                  ? 'bg-blue-950/40 border-blue-500/80 ring-1 ring-blue-500/50'
+                                  : 'bg-zinc-900/60 border-zinc-800/80 hover:bg-zinc-800/80 hover:border-zinc-700'
+                              }`}
+                              title={`Click to add ${item.title} to canvas (or press Enter)`}
                               data-testid={`add-element-${item.type}`}
+                              data-selected={isKeyboardSelected ? 'true' : 'false'}
                             >
                               <div className="flex items-start gap-2.5 min-w-0">
-                                <div className="w-7 h-7 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-blue-400 group-hover:border-blue-500/30 transition shrink-0 mt-0.5">
+                                <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 transition ${
+                                  isKeyboardSelected
+                                    ? 'bg-blue-600/20 text-blue-300 border-blue-500/40'
+                                    : 'bg-zinc-950 text-zinc-400 border-zinc-800 group-hover:text-blue-400 group-hover:border-blue-500/30'
+                                }`}>
                                   <Icon size={14} />
                                 </div>
                                 <div className="min-w-0">
-                                  <div className="text-xs font-medium text-zinc-200 group-hover:text-white truncate">
-                                    {item.title}
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-xs font-medium truncate ${isKeyboardSelected ? 'text-white font-semibold' : 'text-zinc-200 group-hover:text-white'}`}>
+                                      {item.title}
+                                    </span>
+                                    {isKeyboardSelected && (
+                                      <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.2 rounded font-mono shadow-xs shrink-0">
+                                        ↵ Enter
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-[10px] text-zinc-400 truncate">
                                     {item.desc}
@@ -632,7 +854,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                               </div>
                               <button
                                 type="button"
-                                className="opacity-0 group-hover:opacity-100 p-1 rounded-md bg-blue-600 text-white transition shrink-0 mt-1"
+                                className={`p-1 rounded-md transition shrink-0 mt-1 ${
+                                  isKeyboardSelected
+                                    ? 'bg-blue-600 text-white opacity-100'
+                                    : 'opacity-0 group-hover:opacity-100 bg-blue-600 text-white'
+                                }`}
                               >
                                 <Plus size={11} />
                               </button>
