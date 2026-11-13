@@ -3,7 +3,8 @@ export type ComponentType =
   | 'heading' 
   | 'text' 
   | 'card' 
-  | 'container'
+  | 'container' 
+  | 'navbar'
   | 'input' 
   | 'textarea' 
   | 'select' 
@@ -16,6 +17,12 @@ export type ComponentType =
 
 export type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 export type PageTransition = 'fade' | 'slide-left' | 'slide-up' | 'none';
+
+export interface NavLinkItem {
+  label: string;
+  targetPageId?: string;
+  url?: string;
+}
 
 export interface ComponentProps {
   text?: string;
@@ -35,6 +42,14 @@ export interface ComponentProps {
   tableHeaders?: string[];
   tableRows?: string[][];
   subtext?: string;
+  // Navbar props
+  brandName?: string;
+  navLinks?: NavLinkItem[];
+  ctaLabel?: string;
+  ctaTargetPageId?: string;
+  // Data / Form wiring
+  dataCollectionId?: string;
+  unknownType?: string;
   // Simple "When Clicked" / Link To interaction bindings
   whenClicked?: 'none' | 'openPage' | 'openUrl' | 'showPopup' | 'showToast' | 'submitForm';
   targetPageId?: string;
@@ -62,6 +77,7 @@ export interface ComponentStyles {
   height?: 'auto' | 'full' | 'sm' | 'md' | 'lg' | 'custom';
   customHeight?: string;
   minHeight?: string;
+  maxWidth?: string;
   alignSelf?: 'auto' | 'start' | 'center' | 'end' | 'stretch';
 
   // Colors & Backgrounds
@@ -326,6 +342,9 @@ export interface Project {
   variables?: AppVariable[];
   // Global Keyboard Shortcuts Settings Configuration
   customShortcuts?: Record<string, string>;
+  // Canvas editing helpers
+  snapToGrid?: boolean;
+  showGuides?: boolean;
   // Legacy backward-compatibility
   elements?: CanvasElement[];
 }

@@ -12,7 +12,9 @@ import {
   Sparkles,
   Code2,
   FolderGit2,
-  Compass
+  Compass,
+  Briefcase,
+  ShoppingBag
 } from 'lucide-react';
 import { Project } from '../types/editor';
 
@@ -34,6 +36,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onQuickCreate,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -92,6 +95,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       icon: Smartphone 
     },
     { 
+      id: 'portfolio', 
+      name: 'Portfolio', 
+      desc: 'Multi-page showcase & contact flow', 
+      icon: Briefcase 
+    },
+    { 
+      id: 'shop', 
+      name: 'Online Store', 
+      desc: 'Product catalog & checkout route', 
+      icon: ShoppingBag 
+    },
+    { 
       id: 'contact', 
       name: 'Contact Form', 
       desc: 'Inquiry and lead intake workflow', 
@@ -99,8 +114,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     },
     { 
       id: 'card', 
-      name: 'Product Showcase', 
-      desc: 'Catalog card and product showcase', 
+      name: 'Product Card', 
+      desc: 'Featured showcase card layout', 
       icon: Layers 
     },
   ];
@@ -165,7 +180,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="text-[11px] font-medium text-zinc-400 mb-2.5">
               Choose a Starting Point
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
               {starters.map((starter) => {
                 const Icon = starter.icon;
                 return (
@@ -296,17 +311,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       >
                         <Copy size={13} />
                       </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete project "${project.name}"?`)) {
-                            onDeleteProject(project.id);
-                          }
-                        }}
-                        title="Delete project"
-                        className="p-1 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {confirmDeleteId === project.id ? (
+                        <div className="flex items-center gap-1 ml-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDeleteProject(project.id);
+                              setConfirmDeleteId(null);
+                            }}
+                            className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white text-[10px] font-semibold cursor-pointer"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(project.id)}
+                          title="Delete project"
+                          aria-label={`Delete project ${project.name}`}
+                          className="p-1 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded transition cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
 
                     <button

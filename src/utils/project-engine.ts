@@ -37,6 +37,17 @@ export function createNewElement(type: ComponentType): CanvasElement {
       gap: 'md',
       wrap: true,
     },
+    navbar: {
+      brandName: 'AppForge Studio',
+      direction: 'row',
+      gap: 'md',
+      navLinks: [
+        { label: 'Home' },
+        { label: 'Features' },
+        { label: 'Pricing' },
+      ],
+      ctaLabel: 'Open Studio',
+    },
     input: {
       label: 'Email Address',
       placeholder: 'alex@example.com',
@@ -138,6 +149,17 @@ export function createNewElement(type: ComponentType): CanvasElement {
       opacity: 100,
       minHeight: '80px',
     },
+    navbar: {
+      backgroundColor: '#121215',
+      borderColor: '#27272a',
+      borderWidth: '1px',
+      borderStyle: 'solid',
+      borderRadius: 'lg',
+      padding: 'sm',
+      width: 'full',
+      textColor: '#ffffff',
+      opacity: 100,
+    },
     input: {
       fontSize: 'sm',
       backgroundColor: '#18181b',
@@ -231,6 +253,7 @@ export function createNewElement(type: ComponentType): CanvasElement {
     button: 'Action Button',
     card: 'Content Card',
     container: 'Flex Container',
+    navbar: 'Navigation Bar',
     input: 'Text Input',
     textarea: 'Multi-line Textarea',
     select: 'Dropdown Select',
@@ -250,7 +273,7 @@ export function createNewElement(type: ComponentType): CanvasElement {
     styles: { ...defaultStyles[type] },
     events: [],
     interactions: [],
-    children: type === 'container' || type === 'card' ? [] : undefined,
+    children: type === 'container' || type === 'card' || type === 'navbar' ? [] : undefined,
     hidden: false,
     locked: false,
   };
@@ -563,6 +586,109 @@ export function createInitialProject(name: string, templateId?: string): Project
         },
       },
     ];
+  } else if (templateId === 'portfolio') {
+    homeElements = [
+      {
+        ...createNewElement('navbar'),
+        props: {
+          brandName: name || 'Alex Rivera',
+          direction: 'row',
+          navLinks: [
+            { label: 'Work', targetPageId: 'page_home' },
+            { label: 'Contact', targetPageId: 'page_contact' },
+          ],
+          ctaLabel: 'Hire Me',
+          ctaTargetPageId: 'page_contact',
+        },
+      },
+      {
+        ...createNewElement('heading'),
+        props: {
+          text: 'Product Designer & Systems Architect',
+          headingLevel: 'h1',
+          subtext: 'Designing resilient web applications, developer tools, and editorial software interfaces.',
+        },
+      },
+      {
+        ...createNewElement('card'),
+        props: {
+          text: 'Featured Case Study — Cloud Telemetry Console',
+          subtext: 'Reduced incident triage latency by 42% through structured spatial layouts.',
+        },
+      },
+      {
+        ...createNewElement('button'),
+        props: { text: 'Start a Project Inquiry', buttonVariant: 'primary', whenClicked: 'openPage', targetPageId: 'page_contact' },
+      },
+    ];
+    extraPages = [
+      {
+        id: 'page_contact',
+        name: 'Contact',
+        path: '/contact',
+        transition: 'fade',
+        elements: [
+          {
+            ...createNewElement('heading'),
+            props: { text: 'Book a Consultation', headingLevel: 'h2', subtext: 'Share your timeline and project goals.' },
+          },
+          { ...createNewElement('input'), props: { label: 'Your Email', placeholder: 'you@company.com' } },
+          { ...createNewElement('textarea'), props: { label: 'Project Scope', placeholder: 'Tell me about your product...' } },
+          {
+            ...createNewElement('button'),
+            props: { text: 'Send Inquiry', buttonVariant: 'primary', whenClicked: 'submitForm' },
+          },
+        ],
+      },
+    ];
+  } else if (templateId === 'shop') {
+    homeElements = [
+      {
+        ...createNewElement('navbar'),
+        props: {
+          brandName: name || 'Atelier Goods',
+          direction: 'row',
+          navLinks: [
+            { label: 'Catalog', targetPageId: 'page_home' },
+            { label: 'Checkout', targetPageId: 'page_checkout' },
+          ],
+          ctaLabel: 'Cart (1)',
+          ctaTargetPageId: 'page_checkout',
+        },
+      },
+      {
+        ...createNewElement('heading'),
+        props: {
+          text: 'Precision Hardware & Studio Tools',
+          headingLevel: 'h1',
+          subtext: 'Small-batch industrial instruments engineered for daily creative work.',
+        },
+      },
+      {
+        ...createNewElement('card'),
+        props: {
+          text: 'Monolith Wireless Headphones — $249',
+          subtext: 'Acoustic isolation, 40-hour battery life, milled aluminum frame.',
+        },
+      },
+      {
+        ...createNewElement('button'),
+        props: { text: 'Proceed to Checkout →', buttonVariant: 'primary', whenClicked: 'openPage', targetPageId: 'page_checkout' },
+      },
+    ];
+    extraPages = [
+      {
+        id: 'page_checkout',
+        name: 'Checkout',
+        path: '/checkout',
+        transition: 'slide-left',
+        elements: [
+          { ...createNewElement('heading'), props: { text: 'Order Checkout', headingLevel: 'h2', subtext: 'Complete your order securely.' } },
+          { ...createNewElement('input'), props: { label: 'Shipping Email', placeholder: 'buyer@example.com' } },
+          { ...createNewElement('button'), props: { text: 'Confirm Order', buttonVariant: 'primary', whenClicked: 'submitForm' } },
+        ],
+      },
+    ];
   } else if (templateId === 'mobile') {
     homeElements = [
       {
@@ -581,6 +707,7 @@ export function createInitialProject(name: string, templateId?: string): Project
         ...createNewElement('card'),
         name: 'Product Card',
         props: {
+          text: 'Premium Member Pass',
           title: 'Premium Member Pass',
           subtext: 'Instant access to all digital tools and fast checkouts.',
         },
@@ -863,6 +990,31 @@ export function reorderElementsDeep(
   return cloned;
 }
 
+/**
+ * Reorders an element among its immediate siblings (root OR inside a nested Container/Card/Navbar)
+ * without changing its parent or detaching any nested children (CR-PROJ-08).
+ */
+export function reorderElementInTree(
+  elements: CanvasElement[],
+  elementId: string,
+  direction: 'up' | 'down'
+): CanvasElement[] {
+  const idx = elements.findIndex((el) => el.id === elementId);
+  if (idx >= 0) {
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    return reorderElementsDeep(elements, idx, targetIdx);
+  }
+  return elements.map((el) => {
+    if (el.children && el.children.length > 0) {
+      return {
+        ...el,
+        children: reorderElementInTree(el.children, elementId, direction),
+      };
+    }
+    return el;
+  });
+}
+
 // Group selected elements into a new Flex Container
 export function groupElementsIntoContainer(
   elements: CanvasElement[], 
@@ -1056,6 +1208,27 @@ export function reorderElements(
   };
 }
 
+export function reorderElementInProject(
+  project: Project,
+  elementId: string,
+  direction: 'up' | 'down'
+): Project {
+  const proj = ensureProjectPages(project);
+  const activePage = getActivePage(proj);
+
+  const newElements = reorderElementInTree(activePage.elements, elementId, direction);
+  const updatedPages = proj.pages.map((p) =>
+    p.id === activePage.id ? { ...p, elements: newElements } : p
+  );
+
+  return {
+    ...proj,
+    updatedAt: new Date().toISOString(),
+    pages: updatedPages,
+    elements: newElements,
+  };
+}
+
 export function toggleElementVisibility(project: Project, elementId: string): Project {
   const proj = ensureProjectPages(project);
   for (const p of proj.pages) {
@@ -1150,18 +1323,37 @@ export function exportProjectToJson(project: Project): string {
   return JSON.stringify(ensureProjectPages(project), null, 2);
 }
 
+export function escapeHtml(str: unknown): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function sanitizeUrl(raw: unknown): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '#';
+  if (s.startsWith('/') || s.startsWith('#') || s.startsWith('https://') || s.startsWith('http://') || s.startsWith('data:image/')) {
+    return s;
+  }
+  return '#';
+}
+
 export function exportProjectToHtml(project: Project): string {
   const proj = ensureProjectPages(project);
 
-  const pagesJson = JSON.stringify(proj.pages);
-  const homePageId = proj.homePageId;
+  const safeProjectName = escapeHtml(proj.name);
+  const pagesJson = JSON.stringify(proj.pages).replace(/<\//g, '<\\/');
+  const homePageId = escapeHtml(proj.homePageId);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${proj.name} - Built with AppForge</title>
+  <title>${safeProjectName} - Built with AppForge</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .page-fade { animation: fadeIn 0.25s ease-in-out; }
@@ -1169,25 +1361,20 @@ export function exportProjectToHtml(project: Project): string {
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen py-8 px-4 font-sans">
-  <!-- AppForge Multi-Page Runner -->
   <div class="max-w-4xl mx-auto">
-    <!-- Screen Header Nav -->
     <header class="flex items-center justify-between pb-4 mb-6 border-b border-zinc-800">
       <div class="flex items-center gap-2">
         <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-        <h1 class="text-sm font-bold tracking-tight text-white">${proj.name}</h1>
+        <h1 class="text-sm font-bold tracking-tight text-white">${safeProjectName}</h1>
       </div>
-      <div id="nav-pills" class="flex items-center gap-1.5"></div>
+      <nav id="nav-pills" class="flex items-center gap-1.5"></nav>
     </header>
 
-    <!-- Page Target Canvas -->
-    <main id="app-canvas" class="page-fade"></main>
+    <main id="app-canvas" class="page-fade space-y-4"></main>
   </div>
 
-  <!-- Toast Notification Overlay -->
   <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2"></div>
 
-  <!-- Modal Dialog Container -->
   <div id="modal-container" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 hidden">
     <div class="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
       <h3 id="modal-title" class="text-base font-semibold text-white mb-2"></h3>
@@ -1201,6 +1388,11 @@ export function exportProjectToHtml(project: Project): string {
   <script>
     const pages = ${pagesJson};
     let activePageId = '${homePageId}';
+    const formState = {};
+
+    function esc(v) {
+      return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
 
     function showToast(message, type = 'info') {
       const c = document.getElementById('toast-container');
@@ -1222,6 +1414,17 @@ export function exportProjectToHtml(project: Project): string {
       document.getElementById('modal-container').classList.add('hidden');
     }
 
+    function findDeep(list, id) {
+      for (const item of list || []) {
+        if (item.id === id) return item;
+        if (item.children) {
+          const found = findDeep(item.children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+
     function navigateToPage(pageId) {
       const page = pages.find(p => p.id === pageId);
       if (!page) return;
@@ -1233,34 +1436,60 @@ export function exportProjectToHtml(project: Project): string {
     function renderNav() {
       const nav = document.getElementById('nav-pills');
       nav.innerHTML = pages.map(p => 
-        '<button onclick="navigateToPage(\\'' + p.id + '\\')" class="px-2.5 py-1 rounded-lg text-xs font-medium ' +
+        '<button onclick="navigateToPage(\\'' + esc(p.id) + '\\')" class="px-2.5 py-1 rounded-lg text-xs font-medium ' +
         (p.id === activePageId ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-white') +
-        '">' + p.name + '</button>'
+        '">' + esc(p.name) + '</button>'
       ).join('');
     }
 
     function renderElements(elements) {
-      return elements.map(el => {
+      return (elements || []).map(el => {
         if (el.hidden) return '';
+        const p = el.props || {};
+        const s = el.styles || {};
+        const childHtml = el.children && el.children.length ? renderElements(el.children) : '';
         switch (el.type) {
-          case 'heading':
-            return '<div class="mb-4"><h1 class="text-3xl font-bold text-white tracking-tight">' + (el.props.text || '') + '</h1>' +
-              (el.props.subtext ? '<p class="text-zinc-400 mt-1 text-sm">' + el.props.subtext + '</p>' : '') + '</div>';
+          case 'navbar':
+            return '<nav class="w-full px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900/90 flex items-center justify-between gap-4 mb-4">' +
+              '<span class="font-bold text-sm text-white">' + esc(p.brandName || 'AppForge') + '</span>' +
+              '<div class="flex items-center gap-3">' +
+              (p.navLinks || []).map(l => '<button onclick="' + (l.targetPageId ? 'navigateToPage(\\'' + esc(l.targetPageId) + '\\')' : '') + '" class="text-xs text-zinc-300 hover:text-white">' + esc(l.label) + '</button>').join('') +
+              '</div>' +
+              (p.ctaLabel ? '<button onclick="handleButtonClick(\\'' + esc(el.id) + '\\')" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold">' + esc(p.ctaLabel) + '</button>' : '') +
+              '</nav>';
+          case 'container':
+          case 'card': {
+            const isRow = p.direction === 'row';
+            return '<div style="background-color:' + esc(s.backgroundColor || (el.type === 'card' ? '#18181b' : '#121215')) + ';" class="p-5 rounded-xl border border-zinc-800 mb-4 flex ' + (isRow ? 'flex-row flex-wrap items-center gap-4' : 'flex-col gap-3') + '">' +
+              (p.text ? '<div class="w-full"><h4 class="text-base font-semibold text-white mb-1">' + esc(p.text) + '</h4>' + (p.subtext ? '<p class="text-xs text-zinc-400">' + esc(p.subtext) + '</p>' : '') + '</div>' : '') +
+              childHtml + '</div>';
+          }
+          case 'heading': {
+            const tag = p.headingLevel === 'h2' ? 'h2' : p.headingLevel === 'h3' ? 'h3' : 'h1';
+            return '<div class="mb-3"><' + tag + ' class="text-3xl font-bold text-white tracking-tight">' + esc(p.text || '') + '</' + tag + '>' +
+              (p.subtext ? '<p class="text-zinc-400 mt-1 text-sm">' + esc(p.subtext) + '</p>' : '') + '</div>';
+          }
           case 'text':
-            return '<p class="text-zinc-300 text-sm mb-4 leading-relaxed">' + (el.props.text || '') + '</p>';
+            return '<p class="text-zinc-300 text-sm mb-3 leading-relaxed">' + esc(p.text || '') + '</p>';
+          case 'badge':
+            return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-2">' + esc(p.text || 'Badge') + '</span>';
           case 'button':
-            return '<button onclick="handleButtonClick(\\'' + el.id + '\\')" style="background-color: ' + (el.styles.backgroundColor || '#3b82f6') + ';" class="px-5 py-2.5 rounded-lg text-sm font-semibold text-white shadow-md hover:opacity-90 inline-block mb-4 transition">' + (el.props.text || 'Button') + '</button>';
-          case 'card':
-            return '<div class="p-5 rounded-xl border border-zinc-800 bg-zinc-900 mb-4 shadow"><h4 class="text-base font-semibold text-white mb-1">' + (el.props.text || 'Card Title') + '</h4><p class="text-xs text-zinc-400">' + (el.props.subtext || '') + '</p></div>';
+            return '<button onclick="handleButtonClick(\\'' + esc(el.id) + '\\')" style="background-color:' + esc(s.backgroundColor || '#3b82f6') + ';" class="px-5 py-2.5 rounded-lg text-sm font-semibold text-white shadow-md hover:opacity-90 inline-block mb-3 transition cursor-pointer">' + esc(p.text || 'Button') + '</button>';
+          case 'input':
+            return '<div class="w-full mb-3">' + (p.label ? '<label class="block text-xs font-semibold uppercase text-zinc-300 mb-1">' + esc(p.label) + '</label>' : '') + '<input oninput="formState[\\'' + esc(el.id) + '\\']=this.value" placeholder="' + esc(p.placeholder || '') + '" class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white" /></div>';
+          case 'textarea':
+            return '<div class="w-full mb-3">' + (p.label ? '<label class="block text-xs font-semibold uppercase text-zinc-300 mb-1">' + esc(p.label) + '</label>' : '') + '<textarea rows="3" oninput="formState[\\'' + esc(el.id) + '\\']=this.value" placeholder="' + esc(p.placeholder || '') + '" class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white"></textarea></div>';
+          case 'image':
+            return '<div class="w-full overflow-hidden rounded-xl border border-zinc-800 mb-3"><img src="' + esc(p.imageUrl || '') + '" alt="' + esc(p.imageAlt || 'Media') + '" class="w-full h-48 object-cover" /></div>';
           case 'metric':
-            return '<div class="p-5 rounded-xl border border-zinc-800 bg-zinc-900 mb-4 shadow"><span class="text-xs text-zinc-400 uppercase">' + (el.props.metricLabel || 'KPI') + '</span><div class="text-2xl font-bold text-white mt-1">' + (el.props.metricValue || '0') + '</div></div>';
+            return '<div class="p-5 rounded-xl border border-zinc-800 bg-zinc-900 mb-3 shadow"><span class="text-xs text-zinc-400 uppercase">' + esc(p.metricLabel || 'KPI') + '</span><div class="text-2xl font-bold text-white mt-1">' + esc(p.metricValue || '0') + '</div></div>';
           case 'divider':
             return '<hr class="border-zinc-800 my-4" />';
           case 'table':
             return '<div class="border border-zinc-800 rounded-xl overflow-hidden mb-4"><table class="w-full text-left text-xs text-zinc-300"><thead class="bg-zinc-800 text-zinc-400 uppercase"><tr>' +
-              (el.props.tableHeaders || []).map(h => '<th class="px-3.5 py-2">' + h + '</th>').join('') +
+              (p.tableHeaders || []).map(h => '<th class="px-3.5 py-2">' + esc(h) + '</th>').join('') +
               '</tr></thead><tbody>' +
-              (el.props.tableRows || []).map(r => '<tr class="border-t border-zinc-800">' + r.map(c => '<td class="px-3.5 py-2">' + c + '</td>').join('') + '</tr>').join('') +
+              (p.tableRows || []).map(r => '<tr class="border-t border-zinc-800">' + r.map(c => '<td class="px-3.5 py-2">' + esc(c) + '</td>').join('') + '</tr>').join('') +
               '</tbody></table></div>';
           default:
             return '';
@@ -1270,15 +1499,22 @@ export function exportProjectToHtml(project: Project): string {
 
     function handleButtonClick(elementId) {
       const page = pages.find(p => p.id === activePageId);
-      const el = page.elements.find(e => e.id === elementId);
-      if (!el || !el.interactions || el.interactions.length === 0) {
-        showToast('Button clicked!');
+      const el = findDeep(page.elements, elementId);
+      if (!el) return;
+      const p = el.props || {};
+      if (p.whenClicked === 'openPage' && p.targetPageId) { navigateToPage(p.targetPageId); return; }
+      if (p.whenClicked === 'showToast') { showToast(p.toastMessage || 'Action executed!', 'success'); return; }
+      if (p.whenClicked === 'showPopup') { openModal(p.popupTitle, p.popupContent); return; }
+      if (p.whenClicked === 'submitForm') { showToast('Form submitted successfully!', 'success'); return; }
+      if (!el.interactions || el.interactions.length === 0) {
+        showToast('Clicked ' + (el.name || 'element'));
         return;
       }
       el.interactions[0].steps.forEach(step => {
         if (step.type === 'toast') showToast(step.toastMessage, step.toastType);
         if (step.type === 'navigate' && step.targetPageId) navigateToPage(step.targetPageId);
         if (step.type === 'openModal') openModal(step.modalTitle, step.modalContent);
+        if (step.type === 'submitForm') showToast(step.toastMessage || 'Form submitted successfully!', 'success');
       });
     }
 

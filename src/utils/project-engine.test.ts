@@ -564,3 +564,141 @@ test('3-layer Forge Schema: bidirectional serialization and AI Studio Structured
   assert.ok(dashboardNodes.length >= 3, 'Analytics prompt should generate stats and chart elements');
 });
 
+test('validateForgeNodes and remapForgeNodeIds prevent collisions and malformed nodes', async () => {
+  const { validateForgeNodes, remapForgeNodeIds, forgeNodeToCanvasElement } = await import('./forge-schema');
+
+  assert.equal(validateForgeNodes(null).valid, false);
+  assert.equal(validateForgeNodes([]).valid, false);
+  assert.equal(validateForgeNodes([{ broken: true }]).valid, false);
+
+  const validCheck = validateForgeNodes([
+    {
+      id: 'dup_id',
+      type: 'Container',
+      props: { direction: 'column' },
+      styles: {},
+      children: [
+        { id: 'child_1', type: 'Navbar', props: { brandName: 'Acme' }, styles: {} },
+        { id: 'custom_1', type: 'CustomWidgetXYZ', props: {}, styles: {} },
+      ],
+    },
+  ]);
+  assert.equal(validCheck.valid, true);
+  assert.equal(validCheck.nodes.length, 1);
+
+  const existingIds = new Set(['dup_id', 'child_1']);
+  const remapped = remapForgeNodeIds(validCheck.nodes, existingIds);
+  assert.notEqual(remapped[0].id, 'dup_id');
+  assert.notEqual(remapped[0].children?.[0].id, 'child_1');
+  assert.equal(existingIds.has(remapped[0].id), false);
+
+  const convertedCustom = forgeNodeToCanvasElement(remapped[0].children![1]);
+  assert.equal(convertedCustom.props.unknownType, 'CustomWidgetXYZ');
+});
+
+test('reorderElementInTree and reorderElementInProject swap nested sibling children cleanly', async () => {
+  const { reorderElementInTree, reorderElementInProject } = await import('./project-engine');
+
+  const childA = createNewElement('heading');
+  childA.name = 'First Heading';
+  const childB = createNewElement('button');
+  childB.name = 'Second Button';
+  const childC = createNewElement('text');
+  childC.name = 'Third Text';
+
+  const container = createNewElement('container');
+  container.children = [childA, childB, childC];
+
+  const reorderedDown = reorderElementInTree([container], childA.id, 'down');
+  assert.equal(reorderedDown[0].children?.map((c) => c.id).join(','), [childB.id, childA.id, childC.id].join(','));
+
+  const reorderedUp = reorderElementInTree(reorderedDown, childC.id, 'up');
+  assert.equal(reorderedUp[0].children?.map((c) => c.id).join(','), [childB.id, childC.id, childA.id].join(','));
+
+  let proj = createInitialProject('Nested Reorder', 'blank');
+  proj.pages[0].elements = [container];
+  proj = reorderElementInProject(proj, childA.id, 'down');
+  assert.equal(proj.pages[0].elements[0].children?.[0].id, childB.id);
+});
+
+test('wireframe-parser validates file constraints and reconstructs layout tree', async () => {
+  const { validateWireframeFile, reconstructLayoutFromRegions } = await import('./wireframe-parser');
+
+  assert.equal(validateWireframeFile({ type: 'application/pdf', size: 1024 }).valid, false);
+  assert.equal(validateWireframeFile({ type: 'image/png', size: 11 * 1024 * 1024 }).valid, false);
+  assert.equal(validateWireframeFile({ type: 'image/png', size: 2048 }).valid, true);
+  assert.equal(validateWireframeFile({ type: 'image/webp', size: 2048 }).valid, true);
+
+  const nodes = reconstructLayoutFromRegions(
+    [
+      { kind: 'navbar', yRatio: 0.05, widthRatio: 0.95, label: 'Acme Nav' },
+      { kind: 'hero', yRatio: 0.25, widthRatio: 0.85 },
+      { kind: 'card-row', yRatio: 0.55, widthRatio: 0.9, columnCount: 3 },
+      { kind: 'form', yRatio: 0.82, widthRatio: 0.7 },
+    ],
+    undefined,
+    'SaaS wireframe'
+  );
+
+  assert.equal(nodes.length, 4);
+  assert.equal(nodes[0].type, 'Navbar');
+  assert.equal(nodes[1].type, 'Container');
+  assert.equal(nodes[2].type, 'Container');
+  assert.equal(nodes[2].children?.length, 3);
+  assert.equal(nodes[3].type, 'Card');
+});
+
+test('zip-exporter generates sanitized multi-page HTML, React TSX, and valid ZIP blob', async () => {
+  const {
+    routeToHtmlFilename,
+    generateMultiPageHtmlFiles,
+    generateReactBundleFiles,
+    getZipManifestPaths,
+    exportProjectAsZipBlob,
+  } = await import('./zip-exporter');
+
+  const used = new Set<string>();
+  assert.equal(routeToHtmlFilename('/', used), 'index.html');
+  assert.equal(routeToHtmlFilename('/pricing', used), 'pricing.html');
+  assert.equal(routeToHtmlFilename('/pricing', used), 'pricing-2.html');
+
+  const proj = createInitialProject('My <script>alert(1)</script> App', 'saas');
+  const xssHeading = createNewElement('heading');
+  xssHeading.props.text = '<img src=x onerror=alert(1)>';
+  proj.pages[0].elements.unshift(xssHeading);
+
+  const htmlFiles = generateMultiPageHtmlFiles(proj);
+  const indexHtml = htmlFiles.get('index.html') || '';
+  assert.ok(indexHtml.length > 0);
+  assert.equal(indexHtml.includes('<img src=x onerror=alert(1)>'), false);
+  assert.ok(indexHtml.includes('&lt;img src=x onerror=alert(1)&gt;'));
+
+  const reactFiles = generateReactBundleFiles(proj);
+  const appTsx = reactFiles.get('react/App.tsx') || '';
+  assert.ok(appTsx.length > 0);
+  assert.ok(appTsx.includes('export default function App()'));
+
+  const manifest = getZipManifestPaths(proj);
+  assert.ok(manifest.includes('html/index.html'));
+  assert.ok(manifest.includes('react/App.tsx'));
+  assert.ok(manifest.includes('forge-project.json'));
+
+  const zipBlob = await exportProjectAsZipBlob(proj);
+  assert.ok(zipBlob.size > 500, 'ZIP archive should contain compressed files');
+});
+
+test('publish-service encodes and decodes unicode project share tokens cleanly', async () => {
+  const { encodeProjectShareToken, decodeProjectShareToken } = await import('./publish-service');
+
+  const proj = createInitialProject('Launch Studio 🚀', 'portfolio');
+  const token = encodeProjectShareToken(proj);
+  assert.ok(token.length > 20);
+
+  const decoded = decodeProjectShareToken(token);
+  assert.ok(decoded);
+  assert.equal(decoded?.name, 'Launch Studio 🚀');
+  assert.equal(decoded?.pages.length, proj.pages.length);
+  assert.equal(decodeProjectShareToken('!!!invalid_base64!!!'), null);
+});
+
+

@@ -24,7 +24,8 @@ import {
   Sun,
   Moon,
   Keyboard,
-  Sparkles
+  Sparkles,
+  Globe
 } from 'lucide-react';
 import { Page, ViewportMode, WorkspaceMode, StudioTheme } from '../types/editor';
 
@@ -48,6 +49,7 @@ interface TopToolbarProps {
   onSave: () => void;
   onOpenPreview: () => void;
   onOpenExport: () => void;
+  onOpenPublish?: () => void;
   onOpenAiStudio?: () => void;
   isSaving: boolean;
   lastSavedText: string;
@@ -79,6 +81,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onSave,
   onOpenPreview,
   onOpenExport,
+  onOpenPublish,
   onOpenAiStudio,
   isSaving,
   lastSavedText,
@@ -105,22 +108,22 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   };
 
   return (
-    <header className="h-12 border-b border-zinc-800 bg-zinc-950 px-3 flex items-center justify-between select-none z-30 shrink-0">
+    <header className="h-12 border-b border-zinc-800 bg-zinc-950 px-2 sm:px-3 flex items-center justify-between gap-2 select-none z-30 shrink-0 overflow-hidden">
       {/* Left: Brand + Navigation + Project Name + Page Switcher */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink">
         <button
           onClick={onBackToDashboard}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition cursor-pointer"
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition cursor-pointer whitespace-nowrap shrink-0"
           title="Return to Dashboard"
         >
           <ArrowLeft size={14} />
-          <span className="hidden sm:inline">Dashboard</span>
+          <span className="hidden xl:inline">Dashboard</span>
         </button>
 
-        <div className="h-4 w-px bg-zinc-800"></div>
+        <div className="h-4 w-px bg-zinc-800 hidden sm:block shrink-0"></div>
 
         {/* Project Name editable */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center min-w-0">
           {isEditingTitle ? (
             <input
               type="text"
@@ -135,7 +138,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                   setIsEditingTitle(false);
                 }
               }}
-              className="bg-zinc-900 border border-blue-500 rounded px-2 py-0.5 text-xs text-white font-medium focus:outline-none"
+              className="bg-zinc-900 border border-blue-500 rounded px-2 py-0.5 text-xs text-white font-medium focus:outline-none w-28 sm:w-40"
             />
           ) : (
             <button
@@ -143,26 +146,27 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 setTitleInput(projectName);
                 setIsEditingTitle(true);
               }}
-              className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-zinc-900 text-xs font-medium text-zinc-200 transition group cursor-pointer"
+              className="flex items-center gap-1.5 px-1.5 sm:px-2 py-1 rounded hover:bg-zinc-900 text-xs font-medium text-zinc-200 transition group cursor-pointer whitespace-nowrap min-w-0"
               title="Click to rename project"
             >
-              <span>{projectName}</span>
-              <Edit2 size={11} className="text-zinc-500 group-hover:text-blue-400 transition" />
+              <span className="truncate max-w-[95px] sm:max-w-[140px] xl:max-w-[180px]">{projectName}</span>
+              <Edit2 size={11} className="text-zinc-500 group-hover:text-blue-400 transition shrink-0 hidden sm:inline" />
             </button>
           )}
         </div>
 
-        <div className="h-4 w-px bg-zinc-800 hidden md:block"></div>
+        <div className="h-4 w-px bg-zinc-800 hidden lg:block shrink-0"></div>
 
         {/* Multi-Page Switcher Dropdown */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <button
             onClick={() => setIsPageDropdownOpen(!isPageDropdownOpen)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition cursor-pointer"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition cursor-pointer whitespace-nowrap"
           >
-            <FileCode2 size={13} className="text-blue-400" />
-            <span>Screen: {activePage?.name || 'Home'}</span>
-            <ChevronDown size={12} className="text-zinc-400" />
+            <FileCode2 size={13} className="text-blue-400 shrink-0" />
+            <span className="hidden sm:inline text-zinc-400">Screen:</span>
+            <span className="truncate max-w-[68px] sm:max-w-[100px]">{activePage?.name || 'Home'}</span>
+            <ChevronDown size={12} className="text-zinc-400 shrink-0" />
           </button>
 
           {isPageDropdownOpen && (
@@ -210,47 +214,47 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       </div>
 
       {/* Middle: Workspace Modes (Design, Logic, Data) */}
-      <div className="flex items-center gap-2">
+      <div className="hidden md:flex items-center gap-1.5 shrink-0">
         <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 text-xs font-medium">
           <button
             onClick={() => onChangeWorkspaceMode('design')}
             title="Design Mode: Visual styling and responsive layouts (Alt+1)"
-            className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
+            className={`px-2 py-1 rounded-md flex items-center gap-1 transition cursor-pointer whitespace-nowrap ${
               workspaceMode === 'design'
                 ? 'bg-zinc-800 text-white font-semibold'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Layout size={13} />
-            <span className="hidden md:inline">Design</span>
+            <span className="hidden lg:inline">Design</span>
           </button>
           <button
             onClick={() => onChangeWorkspaceMode('logic')}
             title="Logic Mode: Visual workflows and interactive triggers (Alt+2)"
-            className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
+            className={`px-2 py-1 rounded-md flex items-center gap-1 transition cursor-pointer whitespace-nowrap ${
               workspaceMode === 'logic'
                 ? 'bg-zinc-800 text-white font-semibold'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
             <GitBranch size={13} />
-            <span className="hidden md:inline">Logic</span>
+            <span className="hidden lg:inline">Logic</span>
           </button>
           <button
             onClick={() => onChangeWorkspaceMode('data')}
             title="Data Mode: Database collections and reactive state (Alt+3)"
-            className={`px-2.5 py-1 rounded-md flex items-center gap-1.5 transition cursor-pointer ${
+            className={`px-2 py-1 rounded-md flex items-center gap-1 transition cursor-pointer whitespace-nowrap ${
               workspaceMode === 'data'
                 ? 'bg-zinc-800 text-white font-semibold'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Database size={13} />
-            <span className="hidden md:inline">Data</span>
+            <span className="hidden lg:inline">Data</span>
           </button>
         </div>
 
-        <div className="h-4 w-px bg-zinc-800 hidden lg:block"></div>
+        <div className="h-4 w-px bg-zinc-800 hidden xl:block"></div>
 
         {/* Undo / Redo */}
         <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
@@ -298,7 +302,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           </button>
           <button
             onClick={() => onChangeViewport('mobile')}
-            title="Mobile view (375px)"
+            title="Mobile view (390px)"
             className={`p-1 rounded transition cursor-pointer ${
               viewport === 'mobile' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
             }`}
@@ -327,17 +331,16 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         </div>
       </div>
 
-      {/* Right: Search + Theme + Save + Preview + Export */}
-      <div className="flex items-center gap-2">
+      {/* Right: Search + Theme + Save + Preview + Export + Publish */}
+      <div className="flex items-center gap-1.5 shrink-0">
         {/* Quick Search & Command Palette (Ctrl+K) */}
         <button
           onClick={onOpenCommandPalette}
-          className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
+          className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 transition cursor-pointer whitespace-nowrap"
           title="Quick Actions (Ctrl+K)"
         >
           <Search size={13} />
-          <span className="text-[11px]">Search</span>
-          <kbd className="px-1.5 py-0.2 rounded bg-zinc-800 border border-zinc-700 text-[10px] font-mono text-zinc-400">
+          <kbd className="px-1 rounded bg-zinc-800 border border-zinc-700 text-[10px] font-mono text-zinc-400">
             ⌘K
           </kbd>
         </button>
@@ -346,13 +349,13 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         {onOpenAiStudio && (
           <button
             onClick={onOpenAiStudio}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 hover:text-white transition cursor-pointer text-xs font-medium shadow-xs"
+            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 hover:text-white transition cursor-pointer text-xs font-medium shadow-xs whitespace-nowrap"
             title="Google AI Studio Structured Generator (⌘J)"
             data-testid="toolbar-ai-studio-btn"
           >
-            <Sparkles size={13} className="text-blue-400" />
-            <span className="hidden lg:inline">AI Studio</span>
-            <kbd className="hidden lg:inline px-1 py-0.2 rounded bg-blue-900/60 border border-blue-700/50 text-[9px] font-mono text-blue-200">
+            <Sparkles size={13} className="text-blue-400 shrink-0" />
+            <span className="hidden xl:inline">AI Studio</span>
+            <kbd className="hidden 2xl:inline px-1 py-0.2 rounded bg-blue-900/60 border border-blue-700/50 text-[9px] font-mono text-blue-200">
               ⌘J
             </kbd>
           </button>
@@ -362,7 +365,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         {onOpenShortcutsModal && (
           <button
             onClick={onOpenShortcutsModal}
-            className="p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
+            className="hidden sm:inline-flex p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
             title="Keyboard Shortcuts & Hotkeys Settings"
             data-testid="toolbar-shortcuts-btn"
           >
@@ -373,7 +376,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         {/* Theme Toggle */}
         <button
           onClick={onToggleTheme}
-          className="p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
+          className="hidden sm:inline-flex p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
           title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
         >
           {theme === 'dark' ? <Sun size={13} className="text-amber-400" /> : <Moon size={13} className="text-blue-400" />}
@@ -382,25 +385,25 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         <button
           onClick={onSave}
           disabled={isSaving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition cursor-pointer"
+          className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition cursor-pointer whitespace-nowrap"
           title="Save project changes"
         >
           {isSaving ? (
             <>
               <Check size={13} className="text-emerald-400" />
-              <span className="hidden sm:inline text-emerald-400">Saving...</span>
+              <span className="hidden sm:inline text-emerald-400">Saved</span>
             </>
           ) : (
             <>
               <Save size={13} />
-              <span className="hidden sm:inline">Save</span>
+              <span className="hidden xl:inline">Save</span>
             </>
           )}
         </button>
 
         <button
           onClick={onOpenPreview}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-100 hover:border-zinc-600 text-xs font-medium transition cursor-pointer"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-100 hover:border-zinc-600 text-xs font-medium transition cursor-pointer whitespace-nowrap"
           title="Preview interactive prototype"
         >
           <Play size={12} className="fill-emerald-400 text-emerald-400" />
@@ -409,12 +412,25 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
         <button
           onClick={onOpenExport}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-600/20 transition cursor-pointer"
-          title="Export code and specifications"
+          className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-100 text-xs font-medium transition cursor-pointer whitespace-nowrap"
+          title="Export code, ZIP archive, and specifications"
+          data-testid="toolbar-export-btn"
         >
           <Download size={13} />
-          <span>Export</span>
+          <span className="hidden lg:inline">Export</span>
         </button>
+
+        {onOpenPublish && (
+          <button
+            onClick={onOpenPublish}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-600/20 transition cursor-pointer whitespace-nowrap shrink-0"
+            title="Publish live interactive web viewer and copy share link"
+            data-testid="toolbar-publish-btn"
+          >
+            <Globe size={13} />
+            <span>Publish</span>
+          </button>
+        )}
       </div>
     </header>
   );

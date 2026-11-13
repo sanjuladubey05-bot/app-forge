@@ -99,6 +99,7 @@ export const FORGE_JSON_SCHEMA_DEFINITION = {
           type: 'string',
           enum: [
             'Container',
+            'Navbar',
             'Card',
             'Heading',
             'Text',
@@ -142,9 +143,28 @@ export const FORGE_JSON_SCHEMA_DEFINITION = {
 // BIDIRECTIONAL CONVERTER FUNCTIONS
 // ----------------------------------------------------
 
+const KNOWN_TYPES = new Set<string>([
+  'container',
+  'navbar',
+  'card',
+  'heading',
+  'text',
+  'button',
+  'input',
+  'textarea',
+  'select',
+  'toggle',
+  'badge',
+  'metric',
+  'image',
+  'table',
+  'divider',
+]);
+
 function capitalizeType(type: string): string {
   const map: Record<string, string> = {
     container: 'Container',
+    navbar: 'Navbar',
     card: 'Card',
     heading: 'Heading',
     text: 'Text',
@@ -165,6 +185,7 @@ function capitalizeType(type: string): string {
 function normalizeType(type: string): ComponentType {
   const map: Record<string, ComponentType> = {
     container: 'container',
+    navbar: 'navbar',
     card: 'card',
     heading: 'heading',
     text: 'text',
@@ -179,7 +200,93 @@ function normalizeType(type: string): ComponentType {
     table: 'table',
     divider: 'divider',
   };
-  return map[type.toLowerCase()] || 'text';
+  return map[(type || '').toLowerCase()] || 'text';
+}
+
+/**
+ * Validates and sanitizes an array of AI-generated or imported ForgeNodes (CR-AI-08).
+ * Rejects empty, non-array, or structurally invalid inputs safely without throwing uncaught errors.
+ */
+export function validateForgeNodes(raw: unknown): { valid: boolean; nodes: ForgeNode[]; error?: string } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { valid: false, nodes: [], error: 'AI output returned zero valid UI nodes.' };
+  }
+
+  const sanitizeNode = (item: any, index: number): ForgeNode | null => {
+    if (!item || typeof item !== 'object') return null;
+    const rawType = typeof item.type === 'string' && item.type.trim() ? item.type.trim() : '';
+    if (!rawType) return null;
+
+    const props = item.props && typeof item.props === 'object' ? { ...item.props } : {};
+    const styles = item.styles && typeof item.styles === 'object' ? { ...item.styles } : {};
+
+    const node: ForgeNode = {
+      id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `node_${index}`,
+      type: rawType,
+      props,
+      styles,
+    };
+
+    if (item.events && typeof item.events === 'object') {
+      node.events = item.events;
+    }
+
+    if (Array.isArray(item.children)) {
+      const cleanChildren = item.children
+        .map((c: any, idx: number) => sanitizeNode(c, idx))
+        .filter((c: ForgeNode | null): c is ForgeNode => c !== null);
+      if (cleanChildren.length > 0 || KNOWN_TYPES.has(rawType.toLowerCase())) {
+        node.children = cleanChildren;
+      }
+    }
+
+    return node;
+  };
+
+  const sanitized = raw
+    .map((item, idx) => sanitizeNode(item, idx))
+    .filter((n): n is ForgeNode => n !== null);
+
+  if (sanitized.length === 0) {
+    return { valid: false, nodes: [], error: 'No structurally valid ForgeNode objects found in response.' };
+  }
+
+  return { valid: true, nodes: sanitized };
+}
+
+/**
+ * Remaps all IDs in a ForgeNode tree to guarantee collision-free uniqueness before canvas insertion (CR-AI-09).
+ */
+export function remapForgeNodeIds(nodes: ForgeNode[], existingIds: Set<string> = new Set()): ForgeNode[] {
+  const seen = new Set<string>(existingIds);
+
+  const nextUniqueId = (prefix: string): string => {
+    let candidate = `${prefix}_${Math.random().toString(36).substring(2, 8)}`;
+    while (seen.has(candidate)) {
+      candidate = `${prefix}_${Math.random().toString(36).substring(2, 8)}`;
+    }
+    seen.add(candidate);
+    return candidate;
+  };
+
+  const remap = (node: ForgeNode): ForgeNode => {
+    const newId = nextUniqueId('fg');
+    const cloned: ForgeNode = {
+      ...node,
+      id: newId,
+      props: { ...(node.props || {}) },
+      styles: { ...(node.styles || {}) },
+    };
+    if (node.events) {
+      cloned.events = JSON.parse(JSON.stringify(node.events));
+    }
+    if (Array.isArray(node.children)) {
+      cloned.children = node.children.map(remap);
+    }
+    return cloned;
+  };
+
+  return nodes.map(remap);
 }
 
 /**
@@ -245,13 +352,18 @@ export function canvasElementToForgeNode(el: CanvasElement): ForgeNode {
  * Converts ForgeNode into internal CanvasElement
  */
 export function forgeNodeToCanvasElement(node: ForgeNode): CanvasElement {
+  const rawTypeLower = (node.type || '').toLowerCase();
+  const isKnown = KNOWN_TYPES.has(rawTypeLower);
   const type = normalizeType(node.type);
   const element: CanvasElement = {
     id: node.id || `el_${Math.random().toString(36).substring(2, 9)}`,
     type,
-    name: node.props?.text || node.props?.label || node.props?.name || `${capitalizeType(type)} Element`,
-    props: { ...node.props },
-    styles: { ...node.styles },
+    name: node.props?.text || node.props?.label || node.props?.brandName || node.props?.name || `${capitalizeType(type)} Element`,
+    props: {
+      ...(node.props || {}),
+      ...(!isKnown && node.type ? { unknownType: node.type } : {}),
+    },
+    styles: { ...(node.styles || {}) },
     events: [],
     interactions: [],
     hidden: false,

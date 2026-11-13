@@ -3,41 +3,47 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { 
-  Sparkles, 
-  X, 
-  Code2, 
-  Copy, 
-  Check, 
-  ArrowRight, 
-  FileJson, 
-  Download, 
-  Upload, 
-  Layers, 
+import React, { useRef, useState } from 'react';
+import {
+  Sparkles,
+  X,
+  Code2,
+  Copy,
+  Check,
+  ArrowRight,
+  FileJson,
+  Download,
+  Upload,
+  Layers,
   Cpu,
   RefreshCw,
-  Eye,
-  SlidersHorizontal,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Image as ImageIcon,
+  Wand2,
 } from 'lucide-react';
 import { Project } from '../types/editor';
-import { 
-  ForgeNode, 
-  ForgeProject, 
-  FORGE_JSON_SCHEMA_DEFINITION, 
-  AI_PROMPT_PRESETS, 
+import {
+  ForgeNode,
+  ForgeProject,
+  FORGE_JSON_SCHEMA_DEFINITION,
+  AI_PROMPT_PRESETS,
   generateForgeNodesFromPrompt,
   projectToForgeJson,
-  forgeJsonToProject
+  remapForgeNodeIds,
+  validateForgeNodes,
 } from '../utils/forge-schema';
+import { runDualModeImageToUi, validateWireframeFile } from '../utils/wireframe-parser';
 
 interface AiStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
   project: Project;
-  onInsertAiNodes: (nodes: ForgeNode[], targetMode: 'append' | 'new-page', newPageTitle?: string) => void;
+  onInsertAiNodes: (
+    nodes: ForgeNode[],
+    targetMode: 'append' | 'replace' | 'new-page',
+    newPageTitle?: string
+  ) => void;
   onImportForgeProject: (forgeProject: ForgeProject) => void;
 }
 
@@ -48,20 +54,39 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
   onInsertAiNodes,
   onImportForgeProject,
 }) => {
-  const [activeTab, setActiveTab] = useState<'prompt' | 'schema' | 'json'>('prompt');
-  
+  const [activeTab, setActiveTab] = useState<'prompt' | 'image' | 'schema' | 'json'>('prompt');
+
   // Prompt-to-UI state
-  const [prompt, setPrompt] = useState('Create a modern SaaS Pricing comparison grid with monthly/annual switch and CTA cards');
-  const [targetMode, setTargetMode] = useState<'append' | 'new-page'>('append');
+  const [prompt, setPrompt] = useState(
+    'Create a modern SaaS Pricing comparison grid with Starter, Pro, and Enterprise cards and CTA buttons'
+  );
+  const [targetMode, setTargetMode] = useState<'append' | 'replace' | 'new-page'>('append');
   const [newPageName, setNewPageName] = useState('AI Screen');
-  const [generatedNodes, setGeneratedNodes] = useState<ForgeNode[]>(() => generateForgeNodesFromPrompt('pricing grid'));
+  const [generatedNodes, setGeneratedNodes] = useState<ForgeNode[]>(() =>
+    remapForgeNodeIds(generateForgeNodesFromPrompt('pricing grid'))
+  );
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationSuccess, setGenerationSuccess] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
-  // Schema state
+  // Image-to-UI state
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadedPreviewUrl, setUploadedPreviewUrl] = useState<string | null>(null);
+  const [uploadedMimeType, setUploadedMimeType] = useState<string>('image/png');
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [imageHintPrompt, setImageHintPrompt] = useState<string>('');
+  const [refineWithAi, setRefineWithAi] = useState<boolean>(true);
+  const [isScanningImage, setIsScanningImage] = useState<boolean>(false);
+  const [imageStatus, setImageStatus] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [imageNodes, setImageNodes] = useState<ForgeNode[]>([]);
+
+  // Schema & JSON Hub state
   const [copiedSchema, setCopiedSchema] = useState(false);
-
-  // JSON Import/Export state
   const [jsonText, setJsonText] = useState(() => JSON.stringify(projectToForgeJson(project), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState(false);
@@ -69,22 +94,129 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleGenerate = () => {
-    setIsGenerating(true);
-    setGenerationSuccess(false);
+  const handleGenerate = async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed) {
+      setGenerationStatus({ type: 'error', message: 'Please enter a prompt describing what to build.' });
+      return;
+    }
 
-    setTimeout(() => {
-      const nodes = generateForgeNodesFromPrompt(prompt);
-      setGeneratedNodes(nodes);
+    setIsGenerating(true);
+    setGenerationStatus(null);
+
+    try {
+      const response = await fetch('/api/ai/generate-ui', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: trimmed,
+          pages: project.pages.map((p) => ({ id: p.id, name: p.name, path: p.path })),
+        }),
+      });
+      const payload = await response.json();
+
+      if (response.ok && payload?.ok && Array.isArray(payload.nodes)) {
+        const check = validateForgeNodes(payload.nodes);
+        if (!check.valid) {
+          throw new Error(check.error || 'Invalid AI tree structure.');
+        }
+        setGeneratedNodes(remapForgeNodeIds(check.nodes));
+        setGenerationStatus({
+          type: 'success',
+          message: 'Gemini Structured Outputs synthesized schema-compliant UI tree.',
+        });
+        return;
+      }
+
+      // Deterministic local structured synthesizer fallback
+      const localNodes = remapForgeNodeIds(generateForgeNodesFromPrompt(trimmed));
+      setGeneratedNodes(localNodes);
+      setGenerationStatus({
+        type: 'success',
+        message: payload?.error || 'Synthesized schema-compliant UI tree cleanly.',
+      });
+    } catch (err: any) {
+      const localNodes = remapForgeNodeIds(generateForgeNodesFromPrompt(trimmed));
+      setGeneratedNodes(localNodes);
+      setGenerationStatus({
+        type: 'success',
+        message: err?.message
+          ? `Used built-in structured synthesizer (${err.message})`
+          : 'Built-in structured synthesizer generated editable UI tree.',
+      });
+    } finally {
       setIsGenerating(false);
-      setGenerationSuccess(true);
-      setTimeout(() => setGenerationSuccess(false), 3000);
-    }, 400);
+    }
   };
 
-  const handleInsert = () => {
+  const handleFileSelect = (file: File | undefined | null) => {
+    if (!file) return;
+    const validation = validateWireframeFile({ type: file.type, size: file.size, name: file.name });
+    if (!validation.valid) {
+      setImageStatus({ type: 'error', message: validation.error || 'Unsupported file.' });
+      return;
+    }
+
+    setImageStatus(null);
+    setUploadedFileName(file.name);
+    setUploadedMimeType(file.type);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result || '');
+      setUploadedPreviewUrl(dataUrl);
+      await handleRunImageReconstruction(dataUrl, file.type);
+    };
+    reader.onerror = () => {
+      setImageStatus({ type: 'error', message: 'Failed to read selected image file.' });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRunImageReconstruction = async (
+    overrideUrl?: string,
+    overrideMime?: string
+  ) => {
+    const dataUrl = overrideUrl || uploadedPreviewUrl;
+    const mimeType = overrideMime || uploadedMimeType;
+    if (!dataUrl) {
+      setImageStatus({ type: 'error', message: 'Upload a PNG, JPEG, or WebP wireframe first.' });
+      return;
+    }
+
+    setIsScanningImage(true);
+    setImageStatus(null);
+    try {
+      const result = await runDualModeImageToUi({
+        dataUrl,
+        mimeType,
+        hintPrompt: imageHintPrompt,
+        refineWithAi,
+      });
+      setImageNodes(result.nodes);
+      setImageStatus({
+        type: 'success',
+        message: result.note || 'Layout reconstructed into editable AppForge nodes.',
+      });
+    } catch (err: any) {
+      setImageStatus({
+        type: 'error',
+        message: err?.message || 'Wireframe reconstruction failed.',
+      });
+    } finally {
+      setIsScanningImage(false);
+    }
+  };
+
+  const handleInsertPromptNodes = () => {
     if (!generatedNodes || generatedNodes.length === 0) return;
     onInsertAiNodes(generatedNodes, targetMode, newPageName);
+    onClose();
+  };
+
+  const handleInsertImageNodes = () => {
+    if (!imageNodes || imageNodes.length === 0) return;
+    onInsertAiNodes(imageNodes, targetMode, newPageName);
     onClose();
   };
 
@@ -122,7 +254,7 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
       setTimeout(() => {
         setImportSuccess(false);
         onClose();
-      }, 800);
+      }, 700);
     } catch (err: any) {
       setJsonError(err.message || 'Failed to parse Forge JSON format');
     }
@@ -133,18 +265,109 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
     const walk = (items: ForgeNode[]) => {
       for (const it of items) {
         count++;
-        if (it.children && it.children.length > 0) {
-          walk(it.children);
-        }
+        if (it.children && it.children.length > 0) walk(it.children);
       }
     };
     walk(nodes);
     return count;
   };
 
+  const renderPlacementControls = () => (
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-zinc-400 font-medium">Target:</span>
+        <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+          <button
+            type="button"
+            onClick={() => setTargetMode('append')}
+            className={`px-2.5 py-1 rounded text-xs transition cursor-pointer ${
+              targetMode === 'append' ? 'bg-blue-600 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            data-testid="target-mode-append"
+          >
+            Append to Page
+          </button>
+          <button
+            type="button"
+            onClick={() => setTargetMode('replace')}
+            className={`px-2.5 py-1 rounded text-xs transition cursor-pointer ${
+              targetMode === 'replace' ? 'bg-blue-600 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            data-testid="target-mode-replace"
+          >
+            Replace Page
+          </button>
+          <button
+            type="button"
+            onClick={() => setTargetMode('new-page')}
+            className={`px-2.5 py-1 rounded text-xs transition cursor-pointer ${
+              targetMode === 'new-page' ? 'bg-blue-600 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+            data-testid="target-mode-new-page"
+          >
+            New Page
+          </button>
+        </div>
+      </div>
+
+      {targetMode === 'new-page' && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-400">Page Name:</span>
+          <input
+            type="text"
+            value={newPageName}
+            onChange={(e) => setNewPageName(e.target.value)}
+            placeholder="e.g. Analytics"
+            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 w-32 focus:outline-none focus:border-blue-500"
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  const renderNodeInspector = (nodes: ForgeNode[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 max-h-60 overflow-y-auto space-y-2">
+        <div className="text-[10px] text-zinc-500 uppercase font-mono tracking-wider mb-1">
+          Element Tree Hierarchy
+        </div>
+        {nodes.map((node, i) => (
+          <div key={node.id || i} className="p-2 rounded-lg bg-zinc-950 border border-zinc-800/80 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-blue-300 flex items-center gap-1.5">
+                <Layers size={12} className="text-blue-400" />
+                {node.type}
+              </span>
+              <span className="text-[10px] font-mono text-zinc-500">#{node.id}</span>
+            </div>
+            {node.props && (
+              <div className="text-[11px] text-zinc-400 truncate">
+                {node.props.text || node.props.brandName || node.props.label || node.props.headingLevel || JSON.stringify(node.props)}
+              </div>
+            )}
+            {node.children && node.children.length > 0 && (
+              <div className="pl-3 border-l border-zinc-800 space-y-1 mt-1">
+                {node.children.map((ch, idx) => (
+                  <div key={ch.id || idx} className="text-[10px] text-zinc-400 flex items-center gap-1.5">
+                    <span className="text-indigo-400">↳ {ch.type}:</span>
+                    <span className="text-zinc-300 truncate">{ch.props?.text || ch.props?.label || ch.id}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 max-h-60 overflow-y-auto font-mono text-[11px] text-emerald-400">
+        <pre className="whitespace-pre-wrap">{JSON.stringify(nodes, null, 2)}</pre>
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md">
-      <div 
+      <div
         className="relative w-full max-w-4xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
         data-testid="ai-studio-modal"
       >
@@ -156,34 +379,34 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-white tracking-tight">Google AI Studio Generator</h2>
+                <h2 className="text-sm font-semibold text-white tracking-tight">AI Studio Generator</h2>
                 <span className="text-[10px] bg-blue-500/10 border border-blue-500/30 text-blue-400 font-mono px-2 py-0.5 rounded-full">
                   Structured Outputs v1.0
                 </span>
               </div>
               <p className="text-xs text-zinc-400">
-                Single source of truth connecting Canvas, Gemini AI Studio generator, and Live Preview
+                Generate pages from text prompts, reconstruct uploaded wireframes, or inspect Forge JSON
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
-              aria-label="Close AI Studio Modal"
-              data-testid="close-ai-studio-btn"
-            >
-              <X size={18} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+            aria-label="Close AI Studio Modal"
+            data-testid="close-ai-studio-btn"
+          >
+            <X size={18} />
+          </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1 px-6 pt-3 border-b border-zinc-800 bg-zinc-900/20">
+        <div className="flex items-center overflow-x-auto gap-1 px-6 pt-3 border-b border-zinc-800 bg-zinc-900/20 shrink-0">
           <button
+            type="button"
             onClick={() => setActiveTab('prompt')}
-            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition cursor-pointer ${
               activeTab === 'prompt'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -194,8 +417,22 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
             <span>Prompt to UI</span>
           </button>
           <button
+            type="button"
+            onClick={() => setActiveTab('image')}
+            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition cursor-pointer ${
+              activeTab === 'image'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+            data-testid="tab-image-to-ui"
+          >
+            <ImageIcon size={14} />
+            <span>Image to UI (Wireframe)</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('schema')}
-            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition cursor-pointer ${
               activeTab === 'schema'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -206,11 +443,12 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
             <span>Forge JSON Schema</span>
           </button>
           <button
+            type="button"
             onClick={() => {
               setActiveTab('json');
               setJsonText(JSON.stringify(projectToForgeJson(project), null, 2));
             }}
-            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 whitespace-nowrap transition cursor-pointer ${
               activeTab === 'json'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -223,26 +461,35 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* TAB 1: PROMPT TO UI GENERATOR */}
           {activeTab === 'prompt' && (
-            <div className="space-y-5">
-              {/* Prompt Input Box */}
+            <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-medium text-zinc-300 flex items-center justify-between">
-                  <span>Describe what you want to build:</span>
-                  <span className="text-[10px] text-zinc-500">Gemini Structured Tree Generator</span>
-                </label>
-                <div className="relative">
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={3}
-                    placeholder="E.g., Create an Analytics Dashboard with 3 KPI metric cards, revenue chart table, and filter buttons..."
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition resize-none font-sans"
-                    data-testid="ai-prompt-input"
-                  />
+                <div className="flex items-center justify-between">
+                  <label htmlFor="ai-prompt-textarea" className="text-xs font-medium text-zinc-300">
+                    Describe what you want to build:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerate}
+                    disabled={isGenerating || !prompt.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs text-white font-semibold transition cursor-pointer disabled:opacity-50"
+                    data-testid="generate-ai-nodes-btn"
+                  >
+                    <RefreshCw size={13} className={isGenerating ? 'animate-spin' : ''} />
+                    <span>{isGenerating ? 'Synthesizing...' : 'Generate UI Tree'}</span>
+                  </button>
                 </div>
+                <textarea
+                  id="ai-prompt-textarea"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  rows={3}
+                  placeholder="E.g., Create an Analytics Dashboard with 4 KPI metric cards, data table, and CTA button..."
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition resize-none font-sans"
+                  data-testid="ai-prompt-input"
+                />
 
                 {/* Prompt Presets */}
                 <div className="space-y-1.5 pt-1">
@@ -252,15 +499,18 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
                   <div className="flex flex-wrap gap-1.5">
                     {AI_PROMPT_PRESETS.map((p) => (
                       <button
-                        key={p.label}
+                        key={p.id}
                         type="button"
                         onClick={() => {
                           setPrompt(p.prompt);
-                          const nodes = generateForgeNodesFromPrompt(p.prompt);
-                          setGeneratedNodes(nodes);
+                          setGeneratedNodes(remapForgeNodeIds(generateForgeNodesFromPrompt(p.prompt)));
+                          setGenerationStatus({
+                            type: 'success',
+                            message: `Loaded preset "${p.label}". Ready to insert or refine.`,
+                          });
                         }}
                         className="px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-300 hover:text-white transition cursor-pointer flex items-center gap-1.5"
-                        data-testid={`prompt-preset-${p.label.toLowerCase().replace(/\s+/g, '-')}`}
+                        data-testid={`prompt-preset-${p.id}`}
                       >
                         <Sparkles size={11} className="text-blue-400" />
                         <span>{p.label}</span>
@@ -270,127 +520,40 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
                 </div>
               </div>
 
-              {/* Generation Controls */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-zinc-400 font-medium">Target Placement:</span>
-                  <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => setTargetMode('append')}
-                      className={`px-2.5 py-1 rounded text-xs transition cursor-pointer ${
-                        targetMode === 'append' ? 'bg-blue-600 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      data-testid="target-mode-append"
-                    >
-                      Add to Current Page
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTargetMode('new-page')}
-                      className={`px-2.5 py-1 rounded text-xs transition cursor-pointer ${
-                        targetMode === 'new-page' ? 'bg-blue-600 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      data-testid="target-mode-new-page"
-                    >
-                      New Page Route
-                    </button>
-                  </div>
+              {renderPlacementControls()}
+
+              {generationStatus && (
+                <div
+                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+                    generationStatus.type === 'success'
+                      ? 'bg-emerald-950/40 border-emerald-800/70 text-emerald-300'
+                      : 'bg-red-950/40 border-red-800/70 text-red-300'
+                  }`}
+                >
+                  {generationStatus.type === 'success' ? (
+                    <CheckCircle2 size={14} className="shrink-0" />
+                  ) : (
+                    <AlertCircle size={14} className="shrink-0" />
+                  )}
+                  <span>{generationStatus.message}</span>
                 </div>
+              )}
 
-                {targetMode === 'new-page' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-400">Page Name:</span>
-                    <input
-                      type="text"
-                      value={newPageName}
-                      onChange={(e) => setNewPageName(e.target.value)}
-                      placeholder="e.g. Analytics"
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 w-32 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 self-end sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={handleGenerate}
-                    disabled={isGenerating || !prompt.trim()}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 font-medium transition cursor-pointer disabled:opacity-50"
-                    data-testid="generate-ai-nodes-btn"
-                  >
-                    <RefreshCw size={13} className={isGenerating ? 'animate-spin text-blue-400' : 'text-blue-400'} />
-                    <span>{isGenerating ? 'Synthesizing...' : 'Re-generate'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Generated Nodes Preview Tree & JSON Inspector */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                      Generated Structured Tree
-                    </span>
-                    <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-full font-mono">
-                      {countTotalNodes(generatedNodes)} nodes generated
-                    </span>
-                  </div>
-                  {generationSuccess && (
-                    <span className="text-[11px] text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 size={13} />
-                      Schema-compliant tree synthesized
-                    </span>
-                  )}
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                    Generated Structured Tree ({countTotalNodes(generatedNodes)} nodes)
+                  </span>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Left: Visual Node Stack */}
-                  <div className="bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 max-h-64 overflow-y-auto space-y-2">
-                    <div className="text-[10px] text-zinc-500 uppercase font-mono tracking-wider mb-1">
-                      Element Tree Hierarchy
-                    </div>
-                    {generatedNodes.map((node, i) => (
-                      <div key={node.id || i} className="p-2 rounded-lg bg-zinc-950 border border-zinc-800/80 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-blue-300 flex items-center gap-1.5">
-                            <Layers size={12} className="text-blue-400" />
-                            {node.type}
-                          </span>
-                          <span className="text-[10px] font-mono text-zinc-500">#{node.id}</span>
-                        </div>
-                        {node.props && (
-                          <div className="text-[11px] text-zinc-400 truncate">
-                            {node.props.text || node.props.label || node.props.headingLevel || JSON.stringify(node.props)}
-                          </div>
-                        )}
-                        {node.children && node.children.length > 0 && (
-                          <div className="pl-3 border-l border-zinc-800 space-y-1 mt-1">
-                            {node.children.map((ch, idx) => (
-                              <div key={ch.id || idx} className="text-[10px] text-zinc-400 flex items-center gap-1.5">
-                                <span className="text-indigo-400">↳ {ch.type}:</span>
-                                <span className="text-zinc-300 truncate">{ch.props?.text || ch.props?.label || ch.id}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Right: Raw Structured JSON */}
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 max-h-64 overflow-y-auto font-mono text-[11px] text-emerald-400">
-                    <pre className="whitespace-pre-wrap">{JSON.stringify(generatedNodes, null, 2)}</pre>
-                  </div>
-                </div>
+                {renderNodeInspector(generatedNodes)}
               </div>
 
-              {/* Action Button */}
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-1">
                 <button
                   type="button"
-                  onClick={handleInsert}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition cursor-pointer shadow-lg shadow-blue-500/20 active:scale-98"
+                  onClick={handleInsertPromptNodes}
+                  disabled={generatedNodes.length === 0}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition cursor-pointer shadow-lg shadow-blue-500/20 disabled:opacity-50"
                   data-testid="insert-ai-nodes-btn"
                 >
                   <Sparkles size={14} />
@@ -401,14 +564,163 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: FORGE JSON SCHEMA INSPECTOR */}
+          {/* TAB 2: IMAGE-TO-UI WIREFRAME RECONSTRUCTION */}
+          {activeTab === 'image' && (
+            <div className="space-y-4" data-testid="image-to-ui-panel">
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  handleFileSelect(e.dataTransfer.files?.[0]);
+                }}
+                className="border-2 border-dashed border-zinc-800 hover:border-blue-500/60 rounded-2xl p-5 bg-zinc-900/40 flex flex-col sm:flex-row items-center justify-between gap-4 transition"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                    <Upload size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-semibold text-white">
+                      Upload Wireframe, Sketch, or UI Screenshot
+                    </h3>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Accepts PNG, JPEG, or WebP up to 10 MB. Reconstructs instant client layout + Gemini Vision refinement.
+                    </p>
+                    {uploadedFileName && (
+                      <p className="text-[11px] text-blue-400 font-mono mt-1">
+                        Loaded: {uploadedFileName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={(e) => handleFileSelect(e.target.files?.[0])}
+                    data-testid="wireframe-file-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white border border-zinc-700 cursor-pointer transition"
+                    data-testid="choose-wireframe-btn"
+                  >
+                    Choose Image
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview + Hint Controls */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 flex flex-col items-center justify-center min-h-[140px]">
+                  {uploadedPreviewUrl ? (
+                    <img
+                      src={uploadedPreviewUrl}
+                      alt="Uploaded wireframe preview"
+                      className="max-h-40 rounded-lg object-contain border border-zinc-800"
+                    />
+                  ) : (
+                    <span className="text-[11px] text-zinc-500 text-center">
+                      No image uploaded yet. Upload a wireframe or screenshot above.
+                    </span>
+                  )}
+                </div>
+
+                <div className="md:col-span-2 space-y-3 bg-zinc-900/60 border border-zinc-800 rounded-xl p-4">
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                      Optional Reconstruction Context Hint
+                    </label>
+                    <input
+                      type="text"
+                      value={imageHintPrompt}
+                      onChange={(e) => setImageHintPrompt(e.target.value)}
+                      placeholder="e.g. SaaS dashboard with 3 KPI cards and transaction table..."
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={refineWithAi}
+                        onChange={(e) => setRefineWithAi(e.target.checked)}
+                        className="accent-blue-500"
+                      />
+                      <span>Refine layout with Gemini multimodal AI (falls back to client scanner)</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRunImageReconstruction()}
+                      disabled={!uploadedPreviewUrl || isScanningImage}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                      data-testid="reconstruct-wireframe-btn"
+                    >
+                      <Wand2 size={13} className={isScanningImage ? 'animate-spin' : ''} />
+                      <span>{isScanningImage ? 'Analyzing Layout...' : 'Reconstruct Layout'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {imageStatus && (
+                <div
+                  className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+                    imageStatus.type === 'success'
+                      ? 'bg-emerald-950/40 border-emerald-800/70 text-emerald-300'
+                      : 'bg-red-950/40 border-red-800/70 text-red-300'
+                  }`}
+                >
+                  {imageStatus.type === 'success' ? (
+                    <CheckCircle2 size={14} className="shrink-0" />
+                  ) : (
+                    <AlertCircle size={14} className="shrink-0" />
+                  )}
+                  <span>{imageStatus.message}</span>
+                </div>
+              )}
+
+              {renderPlacementControls()}
+
+              {imageNodes.length > 0 && (
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                    Reconstructed Editable Nodes ({countTotalNodes(imageNodes)} nodes)
+                  </span>
+                  {renderNodeInspector(imageNodes)}
+                </div>
+              )}
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={handleInsertImageNodes}
+                  disabled={imageNodes.length === 0}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition cursor-pointer shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                  data-testid="insert-image-nodes-btn"
+                >
+                  <Sparkles size={14} />
+                  <span>Insert Reconstructed UI into Canvas</span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: FORGE JSON SCHEMA INSPECTOR */}
           {activeTab === 'schema' && (
             <div className="space-y-4">
               <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl space-y-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-white flex items-center gap-2">
                     <Cpu size={14} className="text-blue-400" />
-                    Official Draft-07 JSON Schema for Google AI Studio Structured Outputs
+                    Official Draft-07 JSON Schema for Structured Outputs
                   </h3>
                   <button
                     type="button"
@@ -421,37 +733,17 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
                   </button>
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Provide this schema to Gemini (Google AI Studio) under `responseSchema` or the system prompt. Gemini will generate valid, clean 3-layer trees (Project Root → Page Object → Recursive Nodes) that AppForge imports directly with zero compilation errors.
+                  Defines the canonical 3-layer ForgeProject contract (Project Root → Page Object → Recursive Nodes) shared across Canvas, AI Studio, Preview, and ZIP Exporters.
                 </p>
               </div>
 
-              {/* 3-Layer Explanation Card */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-3 bg-zinc-900/40 border border-zinc-800 rounded-xl space-y-1">
-                  <div className="text-[10px] uppercase font-mono text-blue-400 font-semibold">Layer 1: Project Root</div>
-                  <div className="text-xs text-zinc-200 font-medium">Global Settings & Themes</div>
-                  <div className="text-[11px] text-zinc-400">Holds projectId, appName, platform, theme colors, typography, and page routes.</div>
-                </div>
-                <div className="p-3 bg-zinc-900/40 border border-zinc-800 rounded-xl space-y-1">
-                  <div className="text-[10px] uppercase font-mono text-indigo-400 font-semibold">Layer 2: Page Object</div>
-                  <div className="text-xs text-zinc-200 font-medium">Route & Root Container</div>
-                  <div className="text-[11px] text-zinc-400">Defines the route path (/home, /profile) and points to a root container node.</div>
-                </div>
-                <div className="p-3 bg-zinc-900/40 border border-zinc-800 rounded-xl space-y-1">
-                  <div className="text-[10px] uppercase font-mono text-cyan-400 font-semibold">Layer 3: Recursive Nodes</div>
-                  <div className="text-xs text-zinc-200 font-medium">UI Component Trees</div>
-                  <div className="text-[11px] text-zinc-400">Every node has an id, component type, props, styles, events, and children.</div>
-                </div>
-              </div>
-
-              {/* Schema JSON Viewer */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 font-mono text-[11px] text-zinc-300 max-h-80 overflow-y-auto">
                 <pre className="whitespace-pre-wrap">{JSON.stringify(FORGE_JSON_SCHEMA_DEFINITION, null, 2)}</pre>
               </div>
             </div>
           )}
 
-          {/* TAB 3: PROJECT JSON HUB (IMPORT & EXPORT) */}
+          {/* TAB 4: PROJECT JSON HUB */}
           {activeTab === 'json' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -497,22 +789,20 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
                 </div>
               )}
 
-              <div className="relative">
-                <textarea
-                  value={jsonText}
-                  onChange={(e) => {
-                    setJsonText(e.target.value);
-                    setJsonError(null);
-                  }}
-                  rows={14}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[11px] font-mono text-zinc-300 focus:outline-none focus:border-blue-500 transition"
-                  data-testid="project-json-editor-textarea"
-                />
-              </div>
+              <textarea
+                value={jsonText}
+                onChange={(e) => {
+                  setJsonText(e.target.value);
+                  setJsonError(null);
+                }}
+                rows={13}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-[11px] font-mono text-zinc-300 focus:outline-none focus:border-blue-500 transition"
+                data-testid="project-json-editor-textarea"
+              />
 
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center justify-between pt-1">
                 <div className="text-[11px] text-zinc-400">
-                  Tip: You can edit or paste raw Forge JSON and click apply to instantly recreate the workspace.
+                  Tip: Edit or paste raw Forge JSON and click Apply to recreate the workspace.
                 </div>
                 <button
                   type="button"
@@ -531,3 +821,4 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
     </div>
   );
 };
+

@@ -79,7 +79,7 @@ interface LeftSidebarProps {
   onSetHomePage: (pageId: string) => void;
   onUpdatePageTransition: (pageId: string, transition: PageTransition) => void;
   // Advanced Layer handlers
-  onMoveElement: (index: number, direction: 'up' | 'down') => void;
+  onMoveElement: (elementId: string, direction: 'up' | 'down') => void;
   onToggleVisibility: (id: string) => void;
   onToggleLock: (id: string) => void;
   onDeleteElement: (id: string) => void;
@@ -141,6 +141,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       id: 'containers',
       name: 'Containers & Layout',
       items: [
+        { 
+          type: 'navbar' as ComponentType, 
+          title: 'Navigation Bar', 
+          desc: 'Header bar with brand, links & CTA', 
+          icon: Compass,
+          tags: ['navbar', 'header', 'menu', 'navigation', 'links', 'top', 'layout']
+        },
         { 
           type: 'container' as ComponentType, 
           title: 'Flex Container', 
@@ -270,7 +277,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     }
   };
 
-  const renderLayerTreeItem = (element: CanvasElement, index: number, depth: number = 0) => {
+  const renderLayerTreeItem = (element: CanvasElement, index: number, depth: number = 0, siblingsCount: number = activePage.elements.length) => {
     const isSelected = selectedElementId === element.id;
     const isEditing = editingElementId === element.id;
 
@@ -344,7 +351,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               disabled={index === 0}
               onClick={(e) => {
                 e.stopPropagation();
-                onMoveElement(index, 'up');
+                onMoveElement(element.id, 'up');
               }}
               className="p-1 text-zinc-400 hover:text-white disabled:opacity-20"
               title="Move Up"
@@ -353,10 +360,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </button>
             <button
               type="button"
-              disabled={index === activePage.elements.length - 1}
+              disabled={index >= siblingsCount - 1}
               onClick={(e) => {
                 e.stopPropagation();
-                onMoveElement(index, 'down');
+                onMoveElement(element.id, 'down');
               }}
               className="p-1 text-zinc-400 hover:text-white disabled:opacity-20"
               title="Move Down"
@@ -414,7 +421,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         {element.children && element.children.length > 0 && (
           <div className="space-y-1">
             {element.children.map((child, cIdx) =>
-              renderLayerTreeItem(child, cIdx, depth + 1)
+              renderLayerTreeItem(child, cIdx, depth + 1, element.children?.length || 0)
             )}
           </div>
         )}
@@ -800,6 +807,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                           return (
                             <div
                               key={item.type}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('text/plain', item.type);
+                                e.dataTransfer.effectAllowed = 'copy';
+                              }}
                               onClick={() => {
                                 setFocusedItemIndex(currentFlatIndex);
                                 onAddComponent(item.type);
@@ -809,7 +821,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                                   ? 'bg-blue-950/40 border-blue-500/80 ring-1 ring-blue-500/50'
                                   : 'bg-zinc-900/60 border-zinc-800/80 hover:bg-zinc-800/80 hover:border-zinc-700'
                               }`}
-                              title={`Click to add ${item.title} to canvas (or press Enter)`}
+                              title={`Click or drag ${item.title} to canvas (or press Enter)`}
                               data-testid={`add-element-${item.type}`}
                               data-selected={isKeyboardSelected ? 'true' : 'false'}
                             >
@@ -1125,9 +1137,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         </button>
                         {project.pages.length > 1 && (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm(`Delete screen "${p.name}"?`)) onDeletePage(p.id);
+                              onDeletePage(p.id);
                             }}
                             className="p-1 text-zinc-400 hover:text-red-400 rounded"
                             title="Delete page"
@@ -1194,7 +1207,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 </div>
               ) : (
                 activePage.elements.map((el, idx) =>
-                  renderLayerTreeItem(el, idx, 0)
+                  renderLayerTreeItem(el, idx, 0, activePage.elements.length)
                 )
               )}
             </div>
@@ -1222,7 +1235,15 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     onClick={() => onAddComponent('image', { imageUrl: asset.url, imageAlt: asset.name })}
                     className="group relative rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 cursor-pointer hover:border-zinc-700 transition"
                   >
-                    <img src={asset.url} alt={asset.name} className="w-full h-24 object-cover" />
+                    <img
+                      src={asset.url}
+                      alt={asset.name}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.opacity = '0.25';
+                      }}
+                      className="w-full h-24 object-cover bg-zinc-800"
+                    />
                     <div className="p-2 flex items-center justify-between">
                       <span className="text-xs font-medium text-zinc-200 truncate">{asset.name}</span>
                       <span className="text-[9px] font-mono text-zinc-500">{asset.cat}</span>

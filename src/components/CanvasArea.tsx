@@ -28,13 +28,17 @@ interface CanvasAreaProps {
   onSelectElement: (id: string | null) => void;
   onDeleteElement: (id: string) => void;
   onDuplicateElement: (id: string) => void;
-  onMoveElement: (index: number, direction: 'up' | 'down') => void;
+  onMoveElement: (elementId: string, direction: 'up' | 'down') => void;
   onDropComponent: (type: ComponentType, targetContainerId?: string | null) => void;
   onGroupSelected?: (elementId: string) => void;
   viewport: ViewportMode;
   zoom: number;
   canvasBg: string;
   canvasPadding: string;
+  snapToGrid?: boolean;
+  showGuides?: boolean;
+  onToggleSnapToGrid?: () => void;
+  onToggleGuides?: () => void;
 }
 
 export const CanvasArea: React.FC<CanvasAreaProps> = ({
@@ -51,6 +55,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   zoom,
   canvasBg,
   canvasPadding,
+  snapToGrid = true,
+  showGuides = false,
+  onToggleSnapToGrid,
+  onToggleGuides,
 }) => {
   // Mobile Circular 'Quick Add' Floating Action Menu state & long-press detection
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -162,7 +170,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   const getViewportWidthClass = () => {
     switch (viewport) {
       case 'mobile':
-        return 'max-w-[375px] min-h-[667px] shadow-2xl shadow-black/80 rounded-3xl border-4 border-zinc-800';
+        return 'max-w-[390px] min-h-[667px] shadow-2xl shadow-black/80 rounded-3xl border-4 border-zinc-800';
       case 'tablet':
         return 'max-w-[768px] min-h-[800px] shadow-2xl shadow-black/60 rounded-2xl border-2 border-zinc-800';
       default:
@@ -185,12 +193,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   const buildElementStyle = (styles: CanvasElement['styles']) => {
     const s: React.CSSProperties = {};
 
-    // Sizing
-    if (styles.width === 'half') s.width = '50%';
-    else if (styles.width === 'third') s.width = '33.333%';
-    else if (styles.width === 'auto') s.width = 'auto';
+    // Sizing (half and third use responsive classes so narrow/mobile viewports stack cleanly)
+    if (styles.width === 'auto') s.width = 'auto';
     else if (styles.width === 'custom' && styles.customWidth) s.width = styles.customWidth;
-    else s.width = '100%';
 
     if (styles.height === 'sm') s.height = '48px';
     else if (styles.height === 'md') s.height = '96px';
@@ -273,7 +278,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
     return s;
   };
 
-  const renderComponent = (element: CanvasElement, index: number, isInsideContainer: boolean = false) => {
+  const renderComponent = (element: CanvasElement, index: number, siblingsLength: number) => {
     // Check responsive visibility
     if (viewport === 'mobile' && element.styles.hideOnMobile) {
       return null;
@@ -313,8 +318,27 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
     }
 
     const elementStyle = buildElementStyle(styles);
+    const widthClass =
+      styles.width === 'third'
+        ? viewport === 'mobile'
+          ? 'w-full min-w-0'
+          : 'w-full md:w-[calc(33.333%-0.75rem)] min-w-0'
+        : styles.width === 'half'
+        ? viewport === 'mobile'
+          ? 'w-full min-w-0'
+          : 'w-full sm:w-[calc(50%-0.5rem)] min-w-0'
+        : styles.width === 'auto' || styles.width === 'custom'
+        ? 'min-w-0'
+        : 'w-full min-w-0';
 
     const renderInnerContent = () => {
+      if (props.unknownType) {
+        return (
+          <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-200 text-xs">
+            Unsupported node type preserved safely: <span className="font-mono font-semibold">{props.unknownType}</span>
+          </div>
+        );
+      }
       switch (type) {
         case 'heading': {
           const Tag = props.headingLevel || 'h1';
@@ -361,6 +385,35 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
             </button>
           );
 
+        case 'navbar':
+          return (
+            <div
+              onDrop={(e) => handleDrop(e, element.id)}
+              className="w-full px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900 flex flex-wrap items-center justify-between gap-3"
+            >
+              <span className="text-sm font-bold text-white">{props.brandName || 'AppForge Studio'}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {(props.navLinks || [{ label: 'Home' }, { label: 'Features' }]).map((link, lIdx) => (
+                  <span key={lIdx} className="px-2 py-1 text-xs text-zinc-300">
+                    {link.label}
+                  </span>
+                ))}
+                {props.ctaLabel && (
+                  <span className="px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold">
+                    {props.ctaLabel}
+                  </span>
+                )}
+              </div>
+              {element.children && element.children.length > 0 && (
+                <div className="w-full flex flex-col gap-2 pt-2 border-t border-zinc-800">
+                  {element.children.map((child, cIdx) =>
+                    renderComponent(child, cIdx, element.children?.length || 0)
+                  )}
+                </div>
+              )}
+            </div>
+          );
+
         case 'card':
         case 'container': {
           const isFlexRow = props.direction === 'row';
@@ -369,8 +422,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
           return (
             <div
               onDrop={(e) => handleDrop(e, element.id)}
+              onDragOver={handleDragOver}
               className={`w-full min-h-[60px] p-4 rounded-xl border flex ${
-                isFlexRow ? 'flex-row items-center flex-wrap' : 'flex-col'
+                isFlexRow ? 'flex-row items-stretch flex-wrap' : 'flex-col'
               } ${gapClass}`}
             >
               {type === 'card' && props.text && (
@@ -383,7 +437,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
               {/* Nested Children */}
               {element.children && element.children.length > 0 ? (
                 element.children.map((child, cIdx) =>
-                  renderComponent(child, cIdx, true)
+                  renderComponent(child, cIdx, element.children?.length || 0)
                 )
               ) : (
                 <div className="w-full py-4 border border-dashed border-zinc-800 rounded-lg text-center text-[11px] text-zinc-500">
@@ -476,7 +530,11 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
               <img
                 src={props.imageUrl}
                 alt={props.imageAlt || 'Media'}
-                className="w-full h-44 object-cover"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
+                }}
+                className="w-full h-44 object-cover bg-zinc-900"
               />
             </div>
           );
@@ -499,7 +557,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
 
         case 'table':
           return (
-            <div className="w-full border border-zinc-800 rounded-xl overflow-hidden bg-zinc-900/60">
+            <div className="w-full border border-zinc-800 rounded-xl overflow-x-auto bg-zinc-900/60">
               <table className="w-full text-left text-xs text-zinc-300">
                 <thead className="bg-zinc-800/80 text-[10px] uppercase text-zinc-400 font-semibold border-b border-zinc-800">
                   <tr>
@@ -552,7 +610,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
           }
         }}
         style={elementStyle}
-        className={`relative group rounded-xl transition cursor-pointer ${
+        className={`relative group rounded-xl transition cursor-pointer ${widthClass} ${
           isSelected
             ? 'ring-2 ring-blue-500 shadow-xl shadow-blue-500/10'
             : 'hover:ring-1 hover:ring-zinc-600'
@@ -588,7 +646,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
                 disabled={index === 0}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onMoveElement(index, 'up');
+                  onMoveElement(element.id, 'up');
                 }}
                 className="p-1 text-zinc-400 hover:text-white disabled:opacity-30 rounded hover:bg-zinc-800 transition"
               >
@@ -597,10 +655,10 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
               <button
                 type="button"
                 aria-label="Move down"
-                disabled={index === elements.length - 1}
+                disabled={index >= siblingsLength - 1}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onMoveElement(index, 'down');
+                  onMoveElement(element.id, 'down');
                 }}
                 className="p-1 text-zinc-400 hover:text-white disabled:opacity-30 rounded hover:bg-zinc-800 transition"
               >
@@ -638,46 +696,85 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   };
 
   return (
-    <div
-      onClick={() => {
-        if (!longPressTriggeredRef.current) {
-          onSelectElement(null);
+    <div className="flex-1 relative flex flex-col min-w-0 overflow-hidden bg-[#09090b]">
+      <div
+        onClick={() => {
+          if (!longPressTriggeredRef.current) {
+            onSelectElement(null);
+          }
+          longPressTriggeredRef.current = false;
+        }}
+        onTouchStart={handleTouchStartEmpty}
+        onTouchMove={handleTouchMoveEmpty}
+        onTouchEnd={handleTouchEndEmpty}
+        onTouchCancel={handleTouchEndEmpty}
+        onMouseDown={handleMouseDownEmpty}
+        onMouseMove={handleMouseMoveEmpty}
+        onMouseUp={handleMouseUpEmpty}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          triggerQuickAdd(e.clientX, e.clientY);
+        }}
+        onDragOver={handleDragOver}
+        onDrop={(e) => handleDrop(e, null)}
+        className="flex-1 overflow-auto flex flex-col items-center p-4 sm:p-8 relative select-none"
+        style={
+          snapToGrid
+            ? {
+                backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
+                backgroundSize: '24px 24px',
+              }
+            : undefined
         }
-        longPressTriggeredRef.current = false;
-      }}
-      onTouchStart={handleTouchStartEmpty}
-      onTouchMove={handleTouchMoveEmpty}
-      onTouchEnd={handleTouchEndEmpty}
-      onTouchCancel={handleTouchEndEmpty}
-      onMouseDown={handleMouseDownEmpty}
-      onMouseMove={handleMouseMoveEmpty}
-      onMouseUp={handleMouseUpEmpty}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        triggerQuickAdd(e.clientX, e.clientY);
-      }}
-      onDragOver={handleDragOver}
-      onDrop={(e) => handleDrop(e, null)}
-      className="flex-1 overflow-auto bg-[#09090b] flex flex-col items-center p-8 relative select-none"
-      style={{
-        backgroundImage: 'radial-gradient(#27272a 1px, transparent 1px)',
-        backgroundSize: '24px 24px',
-      }}
-      data-testid="canvas-area"
-      data-empty-canvas="true"
-    >
-      {/* Canvas Top Screen Header Indicator */}
-      <div className="mb-4 flex items-center justify-between w-full max-w-4xl px-2 text-xs text-zinc-400">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-          <span className="font-semibold text-zinc-200">Screen: {activePage.name}</span>
-          <span className="font-mono text-[10px] text-zinc-500">({activePage.path})</span>
+        data-testid="canvas-area"
+        data-empty-canvas="true"
+      >
+        {/* Canvas Top Screen Header Indicator */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 w-full max-w-4xl px-1 sm:px-2 text-xs text-zinc-400">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            <span className="font-semibold text-zinc-200">Screen: {activePage.name}</span>
+            <span className="font-mono text-[10px] text-zinc-500">({activePage.path})</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 font-mono text-[10px] text-zinc-500 whitespace-nowrap">
+            {onToggleSnapToGrid && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSnapToGrid();
+                }}
+                className={`px-2 py-0.5 rounded border transition cursor-pointer whitespace-nowrap ${
+                  snapToGrid
+                    ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
+                    : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white'
+                }`}
+                data-testid="toggle-snap-grid-btn"
+              >
+                Grid {snapToGrid ? 'ON' : 'OFF'}
+              </button>
+            )}
+            {onToggleGuides && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleGuides();
+                }}
+                className={`px-2 py-0.5 rounded border transition cursor-pointer whitespace-nowrap ${
+                  showGuides
+                    ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
+                    : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white'
+                }`}
+                data-testid="toggle-guides-btn"
+              >
+                Guides {showGuides ? 'ON' : 'OFF'}
+              </button>
+            )}
+            <span className="hidden md:inline text-zinc-400">Long-press canvas for Quick Add</span>
+            <span>{viewport.toUpperCase()} • {zoom}%</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3 font-mono text-[10px] text-zinc-500">
-          <span className="hidden sm:inline text-zinc-400">Long-press canvas for Quick Add</span>
-          <span>{viewport.toUpperCase()} • {zoom}%</span>
-        </div>
-      </div>
 
       {/* Scaled Device Frame */}
       <div
@@ -709,10 +806,16 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
             triggerQuickAdd(e.clientX, e.clientY);
           }}
           style={{ backgroundColor: canvasBg }}
-          className={`w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4`}
+          className={`relative w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4`}
           data-testid="canvas-device-frame"
           data-empty-canvas="true"
         >
+          {showGuides && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 w-px border-l border-dashed border-blue-500/45 z-10"
+            />
+          )}
           {elements.length === 0 ? (
             /* Empty State */
             <div className="py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-zinc-800 rounded-2xl p-6 bg-zinc-950/40">
@@ -747,13 +850,14 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
               </div>
             </div>
           ) : (
-            elements.map((el, idx) => renderComponent(el, idx, false))
+            elements.map((el, idx) => renderComponent(el, idx, elements.length))
           )}
         </div>
       </div>
+      </div>
 
-      {/* Mobile Quick Add Floating Action Trigger */}
-      <div className="fixed bottom-16 left-4 z-40 sm:bottom-18">
+      {/* Quick Add Floating Action Trigger — scoped strictly inside CanvasArea */}
+      <div className="absolute bottom-4 left-4 z-20">
         <button
           type="button"
           onClick={(e) => {

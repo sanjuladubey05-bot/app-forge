@@ -18,7 +18,7 @@ import {
   Box
 } from 'lucide-react';
 import { ActionStep, CanvasElement, Project, ViewportMode } from '../types/editor';
-import { ensureProjectPages, evaluateCondition } from '../utils/project-engine';
+import { ensureProjectPages, evaluateCondition, sanitizeUrl } from '../utils/project-engine';
 
 interface PreviewModeProps {
   project: Project;
@@ -170,8 +170,13 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
         }
         case 'openUrl': {
           if (element.props.targetUrl) {
-            window.open(element.props.targetUrl, '_blank', 'noopener,noreferrer');
-            log(element.name, `Opened external URL: ${element.props.targetUrl}`, 'navigation', 'info');
+            const safe = sanitizeUrl(element.props.targetUrl);
+            setModal({
+              isOpen: true,
+              title: 'External Link Target',
+              content: safe !== '#' ? `Ready to visit external destination: ${safe}` : 'Invalid or unsafe URL configured.',
+            });
+            log(element.name, `Resolved external URL: ${safe}`, 'navigation', 'info');
             return;
           }
           break;
@@ -221,7 +226,7 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
   const getViewportWidthClass = () => {
     switch (viewport) {
       case 'mobile':
-        return 'max-w-[375px] min-h-[667px] shadow-2xl shadow-black/80 rounded-3xl border-4 border-zinc-800';
+        return 'max-w-[390px] min-h-[667px] shadow-2xl shadow-black/80 rounded-3xl border-4 border-zinc-800';
       case 'tablet':
         return 'max-w-[768px] min-h-[800px] shadow-2xl shadow-black/60 rounded-2xl border-2 border-zinc-800';
       default:
@@ -263,6 +268,13 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
     }
 
     const renderNode = () => {
+      if (props.unknownType) {
+        return (
+          <div key={element.id} className="p-3 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-200 text-xs">
+            Unsupported node preserved safely: <span className="font-mono font-semibold">{props.unknownType}</span>
+          </div>
+        );
+      }
       switch (type) {
         case 'heading': {
         const Tag = props.headingLevel || 'h1';
@@ -299,6 +311,49 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
           </button>
         );
 
+      case 'navbar':
+        return (
+          <nav
+            key={element.id}
+            style={{ backgroundColor: styles.backgroundColor || '#121215', borderColor: styles.borderColor || '#27272a' }}
+            className="w-full px-4 py-3 rounded-xl border flex flex-wrap items-center justify-between gap-3"
+          >
+            <span className="font-bold text-sm text-white">{props.brandName || project.name}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {(props.navLinks || []).map((link, lIdx) => (
+                <button
+                  key={lIdx}
+                  type="button"
+                  onClick={() => {
+                    if (link.targetPageId) {
+                      setActivePageId(link.targetPageId);
+                      showToast(`Navigated to route`, 'info');
+                    } else {
+                      showToast(`Selected ${link.label}`, 'info');
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-xs text-zinc-300 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+                >
+                  {link.label}
+                </button>
+              ))}
+              {props.ctaLabel && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (props.ctaTargetPageId) setActivePageId(props.ctaTargetPageId);
+                    else showToast(props.ctaLabel || 'Action executed', 'success');
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
+                >
+                  {props.ctaLabel}
+                </button>
+              )}
+            </div>
+            {element.children && element.children.length > 0 && element.children.map((c) => renderComponent(c))}
+          </nav>
+        );
+
       case 'card':
       case 'container': {
         const isFlexRow = props.direction === 'row';
@@ -308,7 +363,7 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
           <div
             key={element.id}
             style={{ backgroundColor: styles.backgroundColor || '#18181b', borderColor: styles.borderColor || '#27272a' }}
-            className={`w-full p-5 rounded-xl border shadow-lg flex ${isFlexRow ? 'flex-row items-center flex-wrap' : 'flex-col'} ${gapClass}`}
+            className={`w-full p-5 rounded-xl border shadow-lg flex ${isFlexRow ? 'flex-row items-stretch flex-wrap' : 'flex-col'} ${gapClass}`}
           >
             {type === 'card' && props.text && (
               <div className="w-full mb-1">
@@ -407,8 +462,16 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
 
       case 'image':
         return (
-          <div key={element.id} className="w-full overflow-hidden rounded-xl border border-zinc-800">
-            <img src={props.imageUrl} alt={props.imageAlt || 'Media'} className="w-full h-48 object-cover" />
+          <div key={element.id} className="w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+            <img
+              src={sanitizeUrl(props.imageUrl)}
+              alt={props.imageAlt || 'Media'}
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
+              }}
+              className="w-full h-48 object-cover"
+            />
           </div>
         );
 
@@ -470,8 +533,25 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
   const node = renderNode();
   if (!node) return null;
 
+  const widthClass =
+    styles.width === 'third'
+      ? viewport === 'mobile'
+        ? 'w-full min-w-0'
+        : 'w-full md:w-[calc(33.333%-0.75rem)] min-w-0'
+      : styles.width === 'half'
+      ? viewport === 'mobile'
+        ? 'w-full min-w-0'
+        : 'w-full sm:w-[calc(50%-0.5rem)] min-w-0'
+      : 'w-full min-w-0';
+
+  if (styles.width === 'custom' && styles.customWidth) {
+    motionStyle.width = styles.customWidth;
+  } else if (styles.width === 'auto') {
+    motionStyle.width = 'auto';
+  }
+
   return (
-    <div key={element.id} style={motionStyle} className="w-full">
+    <div key={element.id} style={motionStyle} className={widthClass}>
       {node}
     </div>
   );

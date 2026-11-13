@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Layout, Layers, FormInput, Sparkles, Monitor, Tablet, Smartphone } from 'lucide-react';
+import { X, Layout, Layers, FormInput, Sparkles, Monitor, Tablet, Smartphone, Briefcase, ShoppingBag } from 'lucide-react';
 import { ViewportMode } from '../types/editor';
 
 interface ProjectCreateModalProps {
@@ -39,6 +39,20 @@ export const ProjectCreateModal: React.FC<ProjectCreateModalProps> = ({
       desc: 'Pre-configured with KPI metrics, header, action CTA, and data table.',
       icon: Sparkles,
       badge: 'Popular',
+    },
+    {
+      id: 'portfolio',
+      title: 'Portfolio & Studio',
+      desc: 'Navbar, hero showcase, case study card, and contact page.',
+      icon: Briefcase,
+      badge: 'Portfolio',
+    },
+    {
+      id: 'shop',
+      title: 'E-Commerce Shop',
+      desc: 'Storefront catalog with navigation bar and checkout flow.',
+      icon: ShoppingBag,
+      badge: 'Store',
     },
     {
       id: 'contact',
@@ -109,7 +123,7 @@ export const ProjectCreateModal: React.FC<ProjectCreateModalProps> = ({
               {[
                 { id: 'desktop', label: 'Desktop (1200px)', icon: Monitor },
                 { id: 'tablet', label: 'Tablet (768px)', icon: Tablet },
-                { id: 'mobile', label: 'Mobile (375px)', icon: Smartphone },
+                { id: 'mobile', label: 'Mobile (390px)', icon: Smartphone },
               ].map((item) => {
                 const Icon = item.icon;
                 const isSelected = viewport === item.id;

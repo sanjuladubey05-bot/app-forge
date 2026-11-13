@@ -33,7 +33,8 @@ import {
   updateElement, 
   deleteElement, 
   duplicateElement, 
-  reorderElements, 
+  reorderElementInProject,
+  findElementDeep,
   toggleElementVisibility, 
   toggleElementLock,
   groupElementsIntoContainer,
@@ -67,8 +68,15 @@ import {
   ForgeNode, 
   ForgeProject, 
   forgeNodeToCanvasElement, 
-  forgeJsonToProject 
+  forgeJsonToProject,
+  remapForgeNodeIds
 } from './utils/forge-schema';
+import {
+  publishProjectLive,
+  loadPublishedProject,
+  PublishResult
+} from './utils/publish-service';
+import { PublicViewer } from './components/PublicViewer';
 import { 
   ShortcutActionId, 
   getActiveShortcuts, 
@@ -83,7 +91,12 @@ import {
   Layers as LayersIcon, 
   Sliders, 
   Play, 
-  X 
+  X,
+  Globe,
+  Check,
+  Copy,
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 
 export default function App() {
@@ -110,11 +123,53 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isAiStudioModalOpen, setIsAiStudioModalOpen] = useState(false);
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [copiedShareUrl, setCopiedShareUrl] = useState(false);
+  const [publishedView, setPublishedView] = useState<{
+    project: Project | null;
+    loading: boolean;
+    error: string | null;
+  } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('All changes saved');
 
   const rawActiveProject = projects.find((p) => p.id === activeProjectId) || null;
   const activeProject = rawActiveProject ? ensureProjectPages(rawActiveProject) : null;
+
+  // Handle `?published=...`, `#share=...`, and `?autostart=1` URL entrypoints
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const publishedId = params.get('published');
+    const hash = window.location.hash || '';
+    const shareMatch = hash.match(/#share=([^&]+)/);
+    const shareToken = shareMatch ? decodeURIComponent(shareMatch[1]) : null;
+
+    if (publishedId || shareToken) {
+      setPublishedView({ project: null, loading: true, error: null });
+      loadPublishedProject(publishedId, shareToken).then((res) => {
+        setPublishedView({
+          project: res.project,
+          loading: false,
+          error: res.error || null,
+        });
+      });
+      return;
+    }
+
+    if (params.get('autostart') === '1' && projects.length > 0) {
+      const targetId = activeProjectId && projects.some((p) => p.id === activeProjectId)
+        ? activeProjectId
+        : projects[0].id;
+      setActiveId(targetId);
+      setView('editor');
+    }
+    // Run only on initial mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist projects whenever they change
   useEffect(() => {
@@ -139,14 +194,18 @@ export default function App() {
     setLogs((prev) => [newLog, ...prev.slice(0, 49)]);
   }, []);
 
-  // Push state to undo history before applying change
+  // Push state to undo history before applying change (max 30 entries, skip no-op mutations)
   const applyProjectMutation = useCallback(
     (mutator: (current: Project) => Project) => {
       if (!activeProject) return;
-      setPast((prev) => [...prev.slice(-25), JSON.parse(JSON.stringify(activeProject))]);
+      const updated = mutator(activeProject);
+      const prevCompare = JSON.stringify({ ...activeProject, updatedAt: '' });
+      const nextCompare = JSON.stringify({ ...updated, updatedAt: '' });
+      if (prevCompare === nextCompare) return;
+
+      setPast((prev) => [...prev.slice(-29), JSON.parse(JSON.stringify(activeProject))]);
       setFuture([]);
 
-      const updated = mutator(activeProject);
       setProjects((prev) =>
         prev.map((p) => (p.id === updated.id ? updated : p))
       );
@@ -329,9 +388,8 @@ export default function App() {
     handleLogExecution('Canvas', 'Cloned element', 'action', 'success');
   };
 
-  const handleMoveElement = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    applyProjectMutation((proj) => reorderElements(proj, index, targetIndex));
+  const handleMoveElement = (elementId: string, direction: 'up' | 'down') => {
+    applyProjectMutation((proj) => reorderElementInProject(proj, elementId, direction));
   };
 
   const handleToggleVisibility = (id: string) => {
@@ -426,14 +484,25 @@ export default function App() {
     handleLogExecution('Layout', `Applied ${alignment.toUpperCase()} alignment to ${selectedElementId ? 'selected element' : 'page root'}`, 'action', 'success');
   }, [activeProject, selectedElementId, applyProjectMutation, handleLogExecution]);
 
-  // Insert AI Generated Structured Nodes
+  // Insert AI Generated Structured Nodes (CR-AI-09 collision-free ID remapping + append/replace/new-page)
   const handleInsertAiNodes = useCallback((
     nodes: ForgeNode[], 
-    targetMode: 'append' | 'new-page', 
+    targetMode: 'append' | 'replace' | 'new-page', 
     newPageTitle?: string
   ) => {
     if (!activeProject || nodes.length === 0) return;
-    const newElements = nodes.map(forgeNodeToCanvasElement);
+
+    const existingIds = new Set<string>();
+    const collectIds = (els: CanvasElement[]) => {
+      els.forEach((el) => {
+        existingIds.add(el.id);
+        if (el.children) collectIds(el.children);
+      });
+    };
+    activeProject.pages.forEach((pg) => collectIds(pg.elements));
+
+    const safeNodes = remapForgeNodeIds(nodes, existingIds);
+    const newElements = safeNodes.map(forgeNodeToCanvasElement);
 
     if (targetMode === 'new-page') {
       const title = newPageTitle?.trim() || 'AI Generated Screen';
@@ -450,24 +519,61 @@ export default function App() {
         ...proj,
         pages: [...proj.pages, newPage],
         activePageId: newPageId,
+        updatedAt: new Date().toISOString(),
       }));
       setSelectedElementId(newElements[0]?.id || null);
       handleLogExecution('AI Studio', `Created screen "${title}" with ${nodes.length} element nodes`, 'action', 'success');
-    } else {
+    } else if (targetMode === 'replace') {
       applyProjectMutation((proj) => {
         const page = getActivePage(proj);
         if (!page) return proj;
         return {
           ...proj,
           pages: proj.pages.map((p) =>
-            p.id === page.id ? { ...p, elements: [...p.elements, ...newElements] } : p
+            p.id === page.id ? { ...p, elements: newElements } : p
           ),
+          elements: newElements,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      setSelectedElementId(newElements[0]?.id || null);
+      handleLogExecution('AI Studio', `Replaced active screen with ${nodes.length} AI element nodes`, 'action', 'success');
+    } else {
+      applyProjectMutation((proj) => {
+        const page = getActivePage(proj);
+        if (!page) return proj;
+        const combined = [...page.elements, ...newElements];
+        return {
+          ...proj,
+          pages: proj.pages.map((p) =>
+            p.id === page.id ? { ...p, elements: combined } : p
+          ),
+          elements: combined,
+          updatedAt: new Date().toISOString(),
         };
       });
       setSelectedElementId(newElements[0]?.id || null);
       handleLogExecution('AI Studio', `Added ${nodes.length} element nodes to active canvas`, 'action', 'success');
     }
   }, [activeProject, applyProjectMutation, handleLogExecution]);
+
+  // Publish & Share Handler
+  const handleOpenPublish = useCallback(async () => {
+    if (!activeProject) return;
+    setIsPublishModalOpen(true);
+    setIsPublishing(true);
+    setPublishError(null);
+    setCopiedShareUrl(false);
+    try {
+      const res = await publishProjectLive(activeProject);
+      setPublishResult(res);
+      handleLogExecution('Publish', `Published snapshot "${activeProject.name}" (${res.source})`, 'action', 'success');
+    } catch (err: any) {
+      setPublishError(err?.message || 'Could not publish project snapshot.');
+    } finally {
+      setIsPublishing(false);
+    }
+  }, [activeProject, handleLogExecution]);
 
   // Bidirectional Forge JSON Project Import
   const handleImportForgeProject = useCallback((forgeProject: ForgeProject) => {
@@ -601,14 +707,15 @@ export default function App() {
         return;
       }
 
-      // 9. Undo / Redo
-      if (matchesShortcut(e, shortcuts.undo)) {
-        e.preventDefault();
-        handleUndo();
-        return;
-      } else if (matchesShortcut(e, shortcuts.redo)) {
+      // 9. Undo / Redo (support both Ctrl+Y and Ctrl+Shift+Z for Redo)
+      const isCtrlShiftZ = (e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z';
+      if (!isTyping && (matchesShortcut(e, shortcuts.redo) || isCtrlShiftZ)) {
         e.preventDefault();
         handleRedo();
+        return;
+      } else if (!isTyping && matchesShortcut(e, shortcuts.undo)) {
+        e.preventDefault();
+        handleUndo();
         return;
       }
     };
@@ -625,6 +732,45 @@ export default function App() {
     handleRedo,
     handleManualSave,
   ]);
+
+  // If viewing a Published Snapshot
+  if (publishedView) {
+    if (publishedView.loading) {
+      return (
+        <div className="min-h-screen bg-zinc-950 text-zinc-200 flex items-center justify-center">
+          <div className="flex items-center gap-3 text-sm">
+            <Loader2 size={18} className="animate-spin text-blue-400" />
+            <span>Loading published application...</span>
+          </div>
+        </div>
+      );
+    }
+    if (!publishedView.project) {
+      return (
+        <PublicViewer
+          project={activeProject || projects[0] || createInitialProject('AppForge App', 'blank')}
+          error={publishedView.error || 'Published snapshot not found.'}
+          onOpenInStudio={() => {
+            if (typeof window !== 'undefined') {
+              window.history.replaceState({}, '', '/');
+            }
+            setPublishedView(null);
+          }}
+        />
+      );
+    }
+    return (
+      <PublicViewer
+        project={publishedView.project}
+        onOpenInStudio={() => {
+          if (typeof window !== 'undefined') {
+            window.history.replaceState({}, '', '/');
+          }
+          setPublishedView(null);
+        }}
+      />
+    );
+  }
 
   // If in Preview Mode
   if (view === 'preview' && activeProject) {
@@ -658,9 +804,9 @@ export default function App() {
     );
   }
 
-  // Active Selected Element and Page
+  // Active Selected Element and Page (deep recursive lookup for nested containers)
   const activePage = getActivePage(activeProject);
-  const selectedElement = activePage.elements.find((el) => el.id === selectedElementId) || null;
+  const selectedElement = selectedElementId ? findElementDeep(activePage.elements, selectedElementId) : null;
 
   return (
     <div className={`h-screen w-screen flex flex-col ${theme === 'light' ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-950 text-zinc-100'} overflow-hidden select-none`}>
@@ -693,6 +839,7 @@ export default function App() {
         onSave={handleManualSave}
         onOpenPreview={() => setView('preview')}
         onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenPublish={handleOpenPublish}
         onOpenAiStudio={() => setIsAiStudioModalOpen(true)}
         isSaving={isSaving}
         lastSavedText={lastSavedText}
@@ -828,6 +975,22 @@ export default function App() {
             zoom={activeProject.zoom}
             canvasBg={activeProject.canvasBg}
             canvasPadding={activeProject.canvasPadding}
+            snapToGrid={activeProject.snapToGrid ?? true}
+            showGuides={activeProject.showGuides ?? false}
+            onToggleSnapToGrid={() => {
+              applyProjectMutation((proj) => ({
+                ...proj,
+                snapToGrid: !(proj.snapToGrid ?? true),
+                updatedAt: new Date().toISOString(),
+              }));
+            }}
+            onToggleGuides={() => {
+              applyProjectMutation((proj) => ({
+                ...proj,
+                showGuides: !(proj.showGuides ?? false),
+                updatedAt: new Date().toISOString(),
+              }));
+            }}
           />
 
           {/* Right Properties Panel (Desktop: pinned right rail) */}
@@ -946,17 +1109,19 @@ export default function App() {
         </button>
       </nav>
 
-      {/* 3. Bottom Panel (Logic Flowchart, Logs & Console, Diagnostic Tests) */}
-      <BottomPanel
-        project={activeProject}
-        activeTab={bottomTab}
-        onChangeTab={setBottomTab}
-        selectedElement={selectedElement}
-        onUpdateElement={handleUpdateElement}
-        logs={logs}
-        onClearLogs={() => setLogs([])}
-        onRunTestScenario={(test) => handleLogExecution('Test Suite', `Executed: ${test}`, 'action', 'success')}
-      />
+      {/* 3. Bottom Panel (Logic Flowchart, Logs & Console, Diagnostic Tests — Desktop) */}
+      <div className="hidden lg:block shrink-0">
+        <BottomPanel
+          project={activeProject}
+          activeTab={bottomTab}
+          onChangeTab={setBottomTab}
+          selectedElement={selectedElement}
+          onUpdateElement={handleUpdateElement}
+          logs={logs}
+          onClearLogs={() => setLogs([])}
+          onRunTestScenario={(test) => handleLogExecution('Test Suite', `Executed: ${test}`, 'action', 'success')}
+        />
+      </div>
 
       {/* Export Modal */}
       <ExportModal
@@ -1012,6 +1177,117 @@ export default function App() {
           onInsertAiNodes={handleInsertAiNodes}
           onImportForgeProject={handleImportForgeProject}
         />
+      )}
+
+      {/* Live Publish & Share Modal */}
+      {isPublishModalOpen && activeProject && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
+          data-testid="publish-modal"
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Globe size={18} />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Publish & Share Live App</h2>
+                  <p className="text-xs text-zinc-400">Interactive public web viewer for {activeProject.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close publish dialog"
+                onClick={() => setIsPublishModalOpen(false)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {isPublishing ? (
+                <div className="py-6 flex items-center justify-center gap-3 text-sm text-zinc-300">
+                  <Loader2 size={18} className="animate-spin text-emerald-400" />
+                  <span>Publishing interactive snapshot...</span>
+                </div>
+              ) : publishError ? (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300">
+                  {publishError}
+                </div>
+              ) : publishResult ? (
+                <>
+                  <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between text-xs text-emerald-300">
+                    <span className="font-medium flex items-center gap-2">
+                      <Check size={14} /> Live snapshot ready ({publishResult.source === 'server' ? 'Server Persisted' : 'Shareable Token Link'})
+                    </span>
+                    <span className="font-mono text-[10px] text-emerald-400/80">
+                      {activeProject.pages.length} {activeProject.pages.length === 1 ? 'page' : 'pages'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+                      Public Share Link
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={publishResult.shareUrl}
+                        aria-label="Public share link"
+                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-200 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(publishResult.shareUrl).catch(() => {});
+                          }
+                          setCopiedShareUrl(true);
+                          setTimeout(() => setCopiedShareUrl(false), 2000);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer transition shrink-0"
+                      >
+                        {copiedShareUrl ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                        <span>{copiedShareUrl ? 'Copied' : 'Copy Link'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsPublishModalOpen(false)}
+                      className="px-4 py-2 rounded-xl border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-xs font-medium text-zinc-300 cursor-pointer"
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPublishModalOpen(false);
+                        if (typeof window !== 'undefined') {
+                          window.history.replaceState({}, '', `?published=${encodeURIComponent(publishResult.id)}`);
+                        }
+                        setPublishedView({
+                          project: ensureProjectPages(activeProject),
+                          loading: false,
+                          error: null,
+                        });
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-600/20"
+                    >
+                      <ExternalLink size={14} />
+                      <span>Open Public Viewer</span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Play-to-Build Interactive Tutorial Quests (Desktop) */}

@@ -10,7 +10,8 @@ import {
   MotionEffect,
   MotionEasing,
   MotionCategory,
-  MotionPresetView
+  MotionPresetView,
+  NavLinkItem
 } from '../types/editor';
 import { 
   Sliders, 
@@ -45,7 +46,10 @@ import {
   LogOut,
   ArrowRightLeft,
   AlertCircle,
-  Keyboard
+  Keyboard,
+  Wand2,
+  Database,
+  Loader2
 } from 'lucide-react';
 import { createDefaultActionStep, getActivePage } from '../utils/project-engine';
 
@@ -76,6 +80,11 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const [activeTrigger, setActiveTrigger] = useState<'onClick' | 'onHover' | 'onChange'>('onClick');
   const [isTestingMotion, setIsTestingMotion] = useState(false);
   const [presetCategory, setPresetCategory] = useState<MotionPresetView>('pairs');
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [isAiEditing, setIsAiEditing] = useState(false);
+  const [aiStatusMsg, setAiStatusMsg] = useState<string | null>(null);
+  const [isWiringData, setIsWiringData] = useState(false);
+  const [wiringFeedback, setWiringFeedback] = useState<string | null>(null);
 
   const activePage = getActivePage(project);
 
@@ -257,6 +266,164 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     });
   };
 
+  // Contextual Selected-Element AI Assistant
+  const applyLocalElementRefinement = (instruction: string) => {
+    const q = instruction.toLowerCase();
+    const nextName = selectedElement.name;
+    const nextProps: ComponentProps = { ...props };
+    const nextStyles: ComponentStyles = { ...styles };
+
+    if (q.includes('polish') || q.includes('copy') || q.includes('headline')) {
+      if (selectedElement.type === 'heading') {
+        nextProps.text = props.text?.trim() ? `${props.text.replace(/[.!]+$/, '')} — Built to Convert` : 'Ship Faster with Precision';
+        nextProps.subtext = props.subtext || 'Streamlined workflows designed for modern product teams.';
+      } else if (selectedElement.type === 'button') {
+        nextProps.text = 'Start Building Now';
+      } else if (selectedElement.type === 'navbar') {
+        nextProps.brandName = props.brandName || project.name || 'AppForge Studio';
+        nextProps.ctaLabel = 'Get Started';
+      } else {
+        nextProps.text = props.text ? `${props.text.trim()} (Verified & Ready)` : 'Crafted for clarity and speed.';
+      }
+    } else if (q.includes('accent') || q.includes('cta') || q.includes('primary')) {
+      nextStyles.backgroundColor = '#2563eb';
+      nextStyles.textColor = '#ffffff';
+      nextStyles.borderColor = '#3b82f6';
+      nextStyles.borderRadius = 'xl';
+      nextStyles.shadow = 'glow-blue';
+      if (selectedElement.type === 'button' && !props.text) {
+        nextProps.text = 'Get Started Free';
+      }
+    } else if (q.includes('contrast') || q.includes('dark') || q.includes('readable')) {
+      nextStyles.backgroundColor = '#09090b';
+      nextStyles.textColor = '#ffffff';
+      nextStyles.borderColor = '#52525b';
+      nextStyles.borderWidth = '1px';
+      nextStyles.padding = styles.padding || 'md';
+    } else {
+      nextProps.text = props.text ? props.text : `Updated ${selectedElement.type}`;
+      nextStyles.borderRadius = styles.borderRadius || 'xl';
+    }
+
+    onUpdateElement(selectedElement.id, {
+      name: nextName,
+      props: nextProps,
+      styles: nextStyles,
+    });
+  };
+
+  const handleAiEditElement = async (instructionOverride?: string) => {
+    const instruction = (instructionOverride ?? aiInstruction).trim();
+    if (!instruction) return;
+    setIsAiEditing(true);
+    setAiStatusMsg(null);
+    try {
+      const resp = await fetch('/api/ai/edit-element', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          element: selectedElement,
+          instruction,
+        }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data?.ok && data.patch) {
+        const patch = data.patch;
+        const nextProps: ComponentProps = { ...props };
+        const nextStyles: ComponentStyles = { ...styles };
+        if (patch.text !== undefined) nextProps.text = patch.text;
+        if (patch.subtext !== undefined) nextProps.subtext = patch.subtext;
+        if (patch.label !== undefined) nextProps.label = patch.label;
+        if (patch.placeholder !== undefined) nextProps.placeholder = patch.placeholder;
+        if (patch.backgroundColor) nextStyles.backgroundColor = patch.backgroundColor;
+        if (patch.textColor) nextStyles.textColor = patch.textColor;
+        if (patch.borderColor) nextStyles.borderColor = patch.borderColor;
+        if (patch.padding) nextStyles.padding = patch.padding as ComponentStyles['padding'];
+        if (patch.borderRadius) nextStyles.borderRadius = patch.borderRadius as ComponentStyles['borderRadius'];
+        if (patch.fontSize) nextStyles.fontSize = patch.fontSize as ComponentStyles['fontSize'];
+        if (patch.fontWeight) nextStyles.fontWeight = patch.fontWeight as ComponentStyles['fontWeight'];
+        if (patch.textAlign) nextStyles.textAlign = patch.textAlign as ComponentStyles['textAlign'];
+        onUpdateElement(selectedElement.id, {
+          name: patch.name || selectedElement.name,
+          props: nextProps,
+          styles: nextStyles,
+        });
+        setAiStatusMsg('Applied AI Gemini refinement.');
+      } else {
+        applyLocalElementRefinement(instruction);
+        setAiStatusMsg('Applied local smart refinement.');
+      }
+      if (!instructionOverride) setAiInstruction('');
+    } catch {
+      applyLocalElementRefinement(instruction);
+      setAiStatusMsg('Applied offline smart refinement.');
+      if (!instructionOverride) setAiInstruction('');
+    } finally {
+      setIsAiEditing(false);
+    }
+  };
+
+  // Smart Data / Logic Wiring Assistant
+  const handleSmartAiWire = async () => {
+    setIsWiringData(true);
+    setWiringFeedback(null);
+    const collections = project.collections || [];
+    const fallbackCol =
+      collections.find((c) => {
+        const hint = `${selectedElement.name} ${props.label || ''} ${props.text || ''}`.toLowerCase();
+        return hint.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes('user');
+      }) || collections[0];
+    const fallbackPage = project.pages.find((p) => p.id !== activePage.id) || activePage;
+
+    try {
+      const resp = await fetch('/api/ai/wire-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `Wire ${selectedElement.type} "${props.label || props.text || selectedElement.name}" to data collection and workflow.`,
+          collections,
+          pages: project.pages,
+        }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data?.ok && data.wiring) {
+        const colId = data.wiring.targetCollectionId || fallbackCol?.id;
+        const nextProps: ComponentProps = {
+          ...props,
+          dataCollectionId: colId || props.dataCollectionId,
+          toastMessage: data.wiring.toastMessage || props.toastMessage,
+        };
+        if (selectedElement.type === 'button' && data.wiring.targetPageId) {
+          nextProps.whenClicked = props.whenClicked && props.whenClicked !== 'none' ? props.whenClicked : 'submitForm';
+          nextProps.targetPageId = data.wiring.targetPageId;
+        }
+        onUpdateElement(selectedElement.id, { props: nextProps });
+        setWiringFeedback(data.wiring.summary || 'Smart AI wiring connected!');
+      } else {
+        onUpdateElement(selectedElement.id, {
+          props: {
+            ...props,
+            dataCollectionId: fallbackCol?.id || props.dataCollectionId,
+            toastMessage: props.toastMessage || `Saved to ${fallbackCol?.name || 'Records'}`,
+            ...(selectedElement.type === 'button' && !props.targetPageId ? { targetPageId: fallbackPage?.id } : {}),
+          },
+        });
+        setWiringFeedback(`Connected to ${fallbackCol?.name || 'Data Collection'} (${fallbackPage?.name || 'Home'}).`);
+      }
+    } catch {
+      onUpdateElement(selectedElement.id, {
+        props: {
+          ...props,
+          dataCollectionId: fallbackCol?.id || props.dataCollectionId,
+          toastMessage: props.toastMessage || `Saved to ${fallbackCol?.name || 'Records'}`,
+        },
+      });
+      setWiringFeedback(`Connected locally to ${fallbackCol?.name || 'Data Collection'}.`);
+    } finally {
+      setIsWiringData(false);
+    }
+  };
+
   // Interaction handlers
   const currentInteraction = interactions.find((i) => i.trigger === activeTrigger) || {
     id: `inter_${activeTrigger}`,
@@ -405,6 +572,60 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         {/* ================= PROPS TAB ================= */}
         {activeTab === 'props' && (
           <div className="space-y-4">
+            {/* Contextual AI Element Assistant */}
+            <div className="p-3 rounded-xl bg-gradient-to-br from-blue-950/40 to-zinc-900 border border-blue-500/20 space-y-2.5" data-testid="contextual-ai-assistant">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-blue-400" />
+                  <span>AI Element Assistant</span>
+                </span>
+                {isAiEditing && <Loader2 size={12} className="animate-spin text-blue-400" />}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={aiInstruction}
+                  onChange={(e) => setAiInstruction(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAiEditElement();
+                    }
+                  }}
+                  placeholder="e.g. Make headline punchier..."
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  disabled={isAiEditing || !aiInstruction.trim()}
+                  onClick={() => handleAiEditElement()}
+                  className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-medium cursor-pointer transition"
+                  title="Apply AI Edit"
+                >
+                  <Wand2 size={13} />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {(['Polish Copy', 'Accent CTA', 'High Contrast'] as const).map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    disabled={isAiEditing}
+                    onClick={() => handleAiEditElement(preset)}
+                    className="px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] font-medium text-zinc-300 hover:text-white transition cursor-pointer"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+              {aiStatusMsg && (
+                <p className="text-[10px] text-emerald-400 flex items-center gap-1">
+                  <Check size={10} />
+                  <span>{aiStatusMsg}</span>
+                </p>
+              )}
+            </div>
+
             {/* Primary Text Content */}
             {(selectedElement.type === 'heading' ||
               selectedElement.type === 'text' ||
@@ -587,6 +808,164 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-white"
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Navbar Properties Editor */}
+            {selectedElement.type === 'navbar' && (
+              <div className="space-y-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-400 block">
+                  Navigation Bar Settings
+                </span>
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                    Brand Name
+                  </label>
+                  <input
+                    type="text"
+                    value={props.brandName || ''}
+                    onChange={(e) => handlePropsChange({ brandName: e.target.value })}
+                    placeholder="AppForge Studio"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                      CTA Label
+                    </label>
+                    <input
+                      type="text"
+                      value={props.ctaLabel || ''}
+                      onChange={(e) => handlePropsChange({ ctaLabel: e.target.value })}
+                      placeholder="Get Started"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                      CTA Target Page
+                    </label>
+                    <select
+                      value={props.ctaTargetPageId || ''}
+                      onChange={(e) => handlePropsChange({ ctaTargetPageId: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white"
+                    >
+                      <option value="">None</option>
+                      {project.pages.map((pg) => (
+                        <option key={pg.id} value={pg.id}>
+                          {pg.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-semibold uppercase text-zinc-400">
+                      Nav Links ({(props.navLinks || []).length})
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const existing = props.navLinks || [];
+                        const nextLink: NavLinkItem = {
+                          label: `Link ${existing.length + 1}`,
+                          targetPageId: project.pages[0]?.id || '',
+                        };
+                        handlePropsChange({ navLinks: [...existing, nextLink] });
+                      }}
+                      className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={10} /> Add Link
+                    </button>
+                  </div>
+                  {(props.navLinks || []).map((link, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={link.label}
+                        onChange={(e) => {
+                          const updated = [...(props.navLinks || [])];
+                          updated[idx] = { ...updated[idx], label: e.target.value };
+                          handlePropsChange({ navLinks: updated });
+                        }}
+                        placeholder="Label"
+                        className="w-24 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
+                      />
+                      <select
+                        value={link.targetPageId || ''}
+                        onChange={(e) => {
+                          const updated = [...(props.navLinks || [])];
+                          updated[idx] = { ...updated[idx], targetPageId: e.target.value };
+                          handlePropsChange({ navLinks: updated });
+                        }}
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+                      >
+                        <option value="">-- Page --</option>
+                        {project.pages.map((pg) => (
+                          <option key={pg.id} value={pg.id}>
+                            {pg.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = (props.navLinks || []).filter((_, i) => i !== idx);
+                          handlePropsChange({ navLinks: updated });
+                        }}
+                        className="p-1 text-zinc-500 hover:text-red-400 cursor-pointer"
+                        title="Remove nav link"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Data Collection Binding & Smart AI Wire */}
+            {(selectedElement.type === 'input' ||
+              selectedElement.type === 'textarea' ||
+              selectedElement.type === 'select' ||
+              selectedElement.type === 'table' ||
+              (selectedElement.type === 'button' && props.whenClicked === 'submitForm')) && (
+              <div className="space-y-2.5 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800" data-testid="data-collection-binding">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                    <Database size={12} />
+                    <span>Data Collection Binding</span>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={isWiringData}
+                    onClick={handleSmartAiWire}
+                    className="px-2 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition"
+                  >
+                    {isWiringData ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                    <span>Smart AI Wire</span>
+                  </button>
+                </div>
+                <select
+                  value={props.dataCollectionId || ''}
+                  onChange={(e) => handlePropsChange({ dataCollectionId: e.target.value })}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">-- Unbound (Local State) --</option>
+                  {(project.collections || []).map((col) => (
+                    <option key={col.id} value={col.id}>
+                      {col.name} ({col.fields.length} fields)
+                    </option>
+                  ))}
+                </select>
+                {wiringFeedback && (
+                  <p className="text-[10px] text-emerald-400 flex items-center gap-1">
+                    <Check size={10} />
+                    <span>{wiringFeedback}</span>
+                  </p>
+                )}
               </div>
             )}
 
