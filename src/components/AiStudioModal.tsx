@@ -45,6 +45,7 @@ interface AiStudioModalProps {
     newPageTitle?: string
   ) => void;
   onImportForgeProject: (forgeProject: ForgeProject) => void;
+  onOpenAi3DModal?: () => void;
 }
 
 export const AiStudioModal: React.FC<AiStudioModalProps> = ({
@@ -53,6 +54,7 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
   project,
   onInsertAiNodes,
   onImportForgeProject,
+  onOpenAi3DModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'prompt' | 'image' | 'schema' | 'json'>('prompt');
 
@@ -60,6 +62,7 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
   const [prompt, setPrompt] = useState(
     'Create a modern SaaS Pricing comparison grid with Starter, Pro, and Enterprise cards and CTA buttons'
   );
+  const [include3dHero, setInclude3dHero] = useState(false);
   const [targetMode, setTargetMode] = useState<'append' | 'replace' | 'new-page'>('append');
   const [newPageName, setNewPageName] = useState('AI Screen');
   const [generatedNodes, setGeneratedNodes] = useState<ForgeNode[]>(() =>
@@ -120,7 +123,27 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
         if (!check.valid) {
           throw new Error(check.error || 'Invalid AI tree structure.');
         }
-        setGeneratedNodes(remapForgeNodeIds(check.nodes));
+        const rawNodes = remapForgeNodeIds(check.nodes);
+        if (include3dHero && !rawNodes.some((n) => n.type === 'widget3d')) {
+          rawNodes.splice(Math.min(1, rawNodes.length), 0, {
+            id: `node_3d_${Date.now().toString(36)}`,
+            type: 'widget3d',
+            props: {
+              widget3d: {
+                presetId: 'webgl-orbital-prism',
+                presetMode: 'threejs-webgl',
+                title: 'Interactive 3D Hero Block',
+                subtitle: 'Drag to orbit · Generated with AppForge AI',
+                accentColor: project.themeTokens?.primaryColor || '#38bdf8',
+                heightPx: 300,
+                autoRotate: true,
+                interactiveTilt: true,
+              },
+            },
+            styles: {},
+          });
+        }
+        setGeneratedNodes(rawNodes);
         setGenerationStatus({
           type: 'success',
           message: 'Gemini Structured Outputs synthesized schema-compliant UI tree.',
@@ -130,6 +153,25 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
 
       // Deterministic local structured synthesizer fallback
       const localNodes = remapForgeNodeIds(generateForgeNodesFromPrompt(trimmed));
+      if (include3dHero && !localNodes.some((n) => n.type === 'widget3d')) {
+        localNodes.splice(Math.min(1, localNodes.length), 0, {
+          id: `node_3d_${Date.now().toString(36)}`,
+          type: 'widget3d',
+          props: {
+            widget3d: {
+              presetId: 'webgl-orbital-prism',
+              presetMode: 'threejs-webgl',
+              title: 'Interactive 3D Hero Block',
+              subtitle: 'Drag to orbit · Procedural WebGL showcase',
+              accentColor: project.themeTokens?.primaryColor || '#38bdf8',
+              heightPx: 300,
+              autoRotate: true,
+              interactiveTilt: true,
+            },
+          },
+          styles: {},
+        });
+      }
       setGeneratedNodes(localNodes);
       setGenerationStatus({
         type: 'success',
@@ -490,6 +532,31 @@ export const AiStudioModal: React.FC<AiStudioModalProps> = ({
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition resize-none font-sans"
                   data-testid="ai-prompt-input"
                 />
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <label className="inline-flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={include3dHero}
+                      onChange={(e) => setInclude3dHero(e.target.checked)}
+                      className="accent-blue-500 cursor-pointer"
+                      data-testid="ai-include-3d-hero-checkbox"
+                    />
+                    <span>Include Interactive 3D Hero Block</span>
+                  </label>
+                  {onOpenAi3DModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenAi3DModal();
+                      }}
+                      className="text-[11px] font-medium text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                    >
+                      Open Dedicated 3D Studio →
+                    </button>
+                  )}
+                </div>
 
                 {/* Prompt Presets */}
                 <div className="space-y-1.5 pt-1">

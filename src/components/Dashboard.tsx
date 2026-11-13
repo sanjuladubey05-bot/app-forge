@@ -14,9 +14,18 @@ import {
   FolderGit2,
   Compass,
   Briefcase,
-  ShoppingBag
+  ShoppingBag,
+  Box,
+  Cloud,
+  CloudDownload,
+  LogIn,
+  LogOut,
+  Loader2
 } from 'lucide-react';
 import { Project } from '../types/editor';
+import { ComplianceTabId } from './ComplianceHubModal';
+import { useAuth } from '../contexts/AuthContext';
+import { listUserCloudProjects, saveProjectToCloud } from '../utils/cloud-sync';
 
 interface DashboardProps {
   projects: Project[];
@@ -25,6 +34,9 @@ interface DashboardProps {
   onDeleteProject: (projectId: string) => void;
   onDuplicateProject: (projectId: string) => void;
   onQuickCreate: (templateId: string) => void;
+  onOpenCompliance?: (tab?: ComplianceTabId) => void;
+  onBackToLanding?: () => void;
+  onImportCloudProjects?: (cloudProjects: Project[]) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -34,9 +46,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDeleteProject,
   onDuplicateProject,
   onQuickCreate,
+  onOpenCompliance,
+  onBackToLanding,
+  onImportCloudProjects,
 }) => {
+  const { user, signingIn, signInWithGoogle, signOut } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudMessage, setCloudMessage] = useState<string | null>(null);
 
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -118,47 +136,173 @@ export const Dashboard: React.FC<DashboardProps> = ({
       desc: 'Featured showcase card layout', 
       icon: Layers 
     },
+    {
+      id: 'linkinbio',
+      name: '3D Link-in-Bio',
+      desc: 'Mobile creator profile with live 3D widget',
+      icon: Box
+    },
   ];
+
+  const handleSyncAllToCloud = async () => {
+    if (!user) return;
+    setCloudBusy(true);
+    setCloudMessage(null);
+    try {
+      for (const proj of projects) {
+        await saveProjectToCloud(proj, user.uid);
+      }
+      setCloudMessage(`Synced ${projects.length} project(s) to Firestore.`);
+    } catch (err: any) {
+      setCloudMessage(err?.message || 'Cloud sync failed.');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    if (!user) return;
+    setCloudBusy(true);
+    setCloudMessage(null);
+    try {
+      const cloudList = await listUserCloudProjects(user.uid);
+      const imported = cloudList.map((c) => c.project).filter(Boolean);
+      onImportCloudProjects?.(imported);
+      setCloudMessage(
+        cloudList.length > 0
+          ? `Loaded ${cloudList.length} project(s) from Firestore.`
+          : 'No saved cloud projects yet.'
+      );
+    } catch (err: any) {
+      setCloudMessage(err?.message || 'Could not load cloud projects.');
+    } finally {
+      setCloudBusy(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-blue-600 focus:text-white focus:text-xs font-semibold"
+      >
+        Skip to main content
+      </a>
       {/* Top Navigation */}
       <header className="h-13 border-b border-zinc-800/80 bg-zinc-950 px-6 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200 font-bold text-xs tracking-wider">
-            AF
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-zinc-100 text-sm tracking-tight">AppForge</span>
-            <span className="text-zinc-500 text-xs font-normal">· Studio</span>
-          </div>
+          {onBackToLanding ? (
+            <button
+              type="button"
+              onClick={onBackToLanding}
+              className="flex items-center gap-2.5 text-left hover:opacity-90 transition cursor-pointer"
+              title="Back to AppForge Home"
+            >
+              <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200 font-bold text-xs tracking-wider">
+                AF
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-zinc-100 text-sm tracking-tight">AppForge</span>
+                <span className="text-zinc-400 text-xs font-normal">· Studio</span>
+              </div>
+            </button>
+          ) : (
+            <>
+              <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200 font-bold text-xs tracking-wider">
+                AF
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-zinc-100 text-sm tracking-tight">AppForge</span>
+                <span className="text-zinc-400 text-xs font-normal">· Studio</span>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Search & New Project CTA */}
-        <div className="flex items-center gap-3">
-          <div className="relative w-64 hidden sm:block">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+        {/* Search, Auth & New Project CTA */}
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-56 hidden md:block">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
             <input
               type="text"
+              aria-label="Search workspace projects"
               placeholder="Search projects..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-zinc-900/80 border border-zinc-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
+              className="w-full bg-zinc-900/80 border border-zinc-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-400 focus:outline-none focus:border-zinc-600 transition"
             />
           </div>
 
+          {user ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={cloudBusy}
+                onClick={handleSyncAllToCloud}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 text-xs font-medium transition cursor-pointer"
+                title="Save all workspace projects to Firestore"
+              >
+                {cloudBusy ? <Loader2 size={12} className="animate-spin" /> : <Cloud size={12} />}
+                <span>Sync Cloud</span>
+              </button>
+              <button
+                type="button"
+                disabled={cloudBusy}
+                onClick={handlePullFromCloud}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition cursor-pointer"
+                title="Load projects from Firestore"
+              >
+                <CloudDownload size={12} />
+                <span>Load Cloud</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+                title={`Signed in as ${user.email || 'Google User'} — Click to sign out`}
+                aria-label="Sign out"
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={signingIn}
+              onClick={() => void signInWithGoogle()}
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs font-medium transition cursor-pointer"
+              data-testid="dashboard-signin-btn"
+            >
+              <LogIn size={13} />
+              <span>{signingIn ? 'Signing in...' : 'Sign in with Google'}</span>
+            </button>
+          )}
+
           <button
+            type="button"
             onClick={onNewProjectClick}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-xs transition cursor-pointer shadow-xs active:scale-[0.98]"
           >
-            <Plus size={14} />
+            <Plus size={14} aria-hidden="true" />
             <span>New Project</span>
           </button>
         </div>
       </header>
+      {cloudMessage && (
+        <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-2 text-xs text-emerald-300 flex items-center justify-between">
+          <span>{cloudMessage}</span>
+          <button
+            type="button"
+            onClick={() => setCloudMessage(null)}
+            className="text-zinc-400 hover:text-white text-[11px] cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 space-y-10">
+      <main id="main-content" tabIndex={-1} className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 space-y-10">
         {/* Workspace Introduction Header */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
@@ -180,7 +324,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="text-[11px] font-medium text-zinc-400 mb-2.5">
               Choose a Starting Point
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-2">
               {starters.map((starter) => {
                 const Icon = starter.icon;
                 return (
@@ -359,9 +503,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </main>
 
-      {/* Quiet Footer */}
-      <footer className="border-t border-zinc-800/80 py-4 px-6 text-center text-xs text-zinc-500">
-        <p>AppForge Studio · Visual Application Architecture</p>
+      {/* Business Transparency & Legal Compliance Footer */}
+      <footer className="border-t border-zinc-800/80 pt-5 pb-20 px-6 text-xs text-zinc-400">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+          <div className="text-center md:text-left">
+            <span className="font-semibold text-zinc-200">AppForge Studio LLC</span> · 548 Market Street, Suite 41290, San Francisco, CA 94104 · Support:{' '}
+            <span className="text-zinc-300">support@appforge.studio</span>
+          </div>
+          {onOpenCompliance && (
+            <nav aria-label="Legal and compliance links" className="flex flex-wrap items-center justify-center gap-3 text-[11px]">
+              <button type="button" onClick={() => onOpenCompliance('privacy')} className="hover:text-white underline cursor-pointer">
+                Privacy Policy
+              </button>
+              <button type="button" onClick={() => onOpenCompliance('terms')} className="hover:text-white underline cursor-pointer">
+                Terms of Service
+              </button>
+              <button type="button" onClick={() => onOpenCompliance('refund')} className="hover:text-white underline cursor-pointer">
+                Refund Policy
+              </button>
+              <button type="button" onClick={() => onOpenCompliance('cookies')} className="hover:text-white underline cursor-pointer">
+                Cookie Settings
+              </button>
+              <button type="button" onClick={() => onOpenCompliance('licenses')} className="hover:text-white underline cursor-pointer">
+                Licenses & SDKs
+              </button>
+              <button type="button" onClick={() => onOpenCompliance('deletion')} data-testid="footer-data-deletion-btn" className="hover:text-white underline cursor-pointer">
+                Data Deletion & Unsubscribe
+              </button>
+            </nav>
+          )}
+        </div>
       </footer>
     </div>
   );

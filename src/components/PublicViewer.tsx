@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -16,7 +16,11 @@ import {
   Menu,
 } from 'lucide-react';
 import { ActionStep, CanvasElement, Project } from '../types/editor';
-import { ensureProjectPages, evaluateCondition, sanitizeUrl } from '../utils/project-engine';
+import { ensureProjectPages, evaluateCondition, getPageTransitionClass, sanitizeUrl } from '../utils/project-engine';
+import { ensureComplianceConfig } from '../utils/compliance-audit';
+import { ComplianceHubModal, ComplianceTabId } from './ComplianceHubModal';
+import { CookieConsentBanner } from './CookieConsentBanner';
+import { Widget3DSandbox } from './Widget3DSandbox';
 
 interface PublicViewerProps {
   project: Project;
@@ -40,6 +44,8 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
   const project = ensureProjectPages(rawProject);
   const [activePageId, setActivePageId] = useState<string>(project.homePageId || project.pages[0]?.id);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [formConsentChecked, setFormConsentChecked] = useState<boolean>(false);
+  const [formConsentError, setFormConsentError] = useState<string | null>(null);
   const [dynamicVisibility, setDynamicVisibility] = useState<Record<string, boolean>>({});
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [modal, setModal] = useState<{ isOpen: boolean; title: string; content: string }>({
@@ -48,8 +54,45 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
     content: '',
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [complianceTab, setComplianceTab] = useState<ComplianceTabId | null>(null);
 
+  const compliance = ensureComplianceConfig(project);
   const activePage = project.pages.find((p) => p.id === activePageId) || project.pages[0];
+
+  useEffect(() => {
+    if (!activePage) return;
+    const prevTitle = document.title;
+    const seoTitle = activePage.seo?.title || `${activePage.name} · ${project.name}`;
+    document.title = seoTitle;
+    return () => {
+      document.title = prevTitle;
+    };
+  }, [activePage, project.name]);
+
+  const pageHasForm = React.useMemo(() => {
+    const check = (els: CanvasElement[]): boolean =>
+      els.some(
+        (el) =>
+          el.type === 'input' ||
+          el.type === 'textarea' ||
+          el.props.whenClicked === 'submitForm' ||
+          (el.children && check(el.children))
+      );
+    return check(activePage?.elements || []);
+  }, [activePage]);
+
+  const validateFormConsent = (): boolean => {
+    if (pageHasForm && compliance.requireFormConsent && !formConsentChecked) {
+      const msg = compliance.collectsKidsData
+        ? 'Please accept Privacy Policy, Terms, and verifiable Parental/Guardian Consent before submitting.'
+        : `Please accept Privacy Policy, Terms, and confirm minimum age (${compliance.minimumAge}+) before submitting.`;
+      setFormConsentError(msg);
+      showToast(msg, 'warning');
+      return false;
+    }
+    setFormConsentError(null);
+    return true;
+  };
 
   const showToast = (text: string, type: ToastMessage['type'] = 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -84,6 +127,7 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
         setModal({ isOpen: false, title: '', content: '' });
         break;
       case 'submitForm':
+        if (!validateFormConsent()) break;
         showToast(step.toastMessage || 'Form submitted successfully!', 'success');
         break;
       case 'toggleVisibility':
@@ -135,6 +179,7 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
         return;
       }
       if (p.whenClicked === 'submitForm') {
+        if (!validateFormConsent()) return;
         showToast('Form submitted successfully!', 'success');
         return;
       }
@@ -365,11 +410,13 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
         );
 
       case 'toggle': {
-        const checked = formValues[el.id] !== undefined ? formValues[el.id] : props.toggleChecked ?? true;
+        const checked = formValues[el.id] !== undefined ? formValues[el.id] : props.toggleChecked ?? false;
         return (
           <button
             key={el.id}
             type="button"
+            role="switch"
+            aria-checked={Boolean(checked)}
             onClick={() => setFormValues({ ...formValues, [el.id]: !checked })}
             className="w-full flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900 text-left cursor-pointer"
           >
@@ -389,8 +436,7 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
           <div key={el.id} className="w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
             <img
               src={sanitizeUrl(props.imageUrl)}
-              alt={props.imageAlt || 'Media'}
-              referrerPolicy="no-referrer"
+              alt={props.imageAlt || 'Application visual asset'}
               className="w-full h-56 object-cover"
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.display = 'none';
@@ -430,6 +476,16 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
           </div>
         );
 
+      case 'widget3d':
+        return (
+          <Widget3DSandbox
+            key={el.id}
+            config={props.widget3d}
+            themeTokens={project.themeTokens}
+            interactive={true}
+          />
+        );
+
       default:
         return null;
     }
@@ -462,6 +518,12 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans" data-testid="public-viewer">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-blue-600 focus:text-white focus:text-xs font-semibold"
+      >
+        Skip to main content
+      </a>
       {/* Clean Public Header */}
       <header className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
@@ -537,28 +599,89 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8">
+      <main id="main-content" tabIndex={-1} className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8">
         <div
-          style={{ backgroundColor: activePage?.canvasBg || project.canvasBg || '#0f0f12' }}
-          className="rounded-2xl border border-zinc-800/80 p-5 sm:p-8 space-y-5 shadow-2xl"
+          key={activePage?.id}
+          style={{ backgroundColor: activePage?.canvasBg || project.themeTokens?.backgroundColor || project.canvasBg || '#0f0f12' }}
+          className={`rounded-2xl border border-zinc-800/80 p-5 sm:p-8 space-y-5 shadow-2xl ${getPageTransitionClass(activePage?.transition)}`}
+          data-testid="public-page-container"
+          data-page-transition={activePage?.transition || 'fade'}
         >
           {activePage && activePage.elements.length > 0 ? (
-            activePage.elements.map((el) => renderElement(el))
+            <>
+              {activePage.elements.map((el) => renderElement(el))}
+              {pageHasForm && compliance.requireFormConsent && (
+                <div className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/90 space-y-1.5">
+                  <label className="flex items-start gap-2.5 text-xs text-zinc-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      data-testid="public-form-consent-checkbox"
+                      checked={formConsentChecked}
+                      onChange={(e) => {
+                        setFormConsentChecked(e.target.checked);
+                        if (e.target.checked) setFormConsentError(null);
+                      }}
+                      className="mt-0.5 accent-blue-500 cursor-pointer"
+                    />
+                    <span>
+                      I agree to the{' '}
+                      <button type="button" onClick={() => setComplianceTab('privacy')} className="underline text-blue-300 cursor-pointer">
+                        Privacy Policy
+                      </button>{' '}
+                      &{' '}
+                      <button type="button" onClick={() => setComplianceTab('terms')} className="underline text-blue-300 cursor-pointer">
+                        Terms of Service
+                      </button>
+                      , and confirm I meet the {compliance.minimumAge}+ age requirement
+                      {compliance.collectsKidsData ? ' (with verifiable parental/guardian consent)' : ''}.
+                    </span>
+                  </label>
+                  {formConsentError && (
+                    <p role="alert" data-testid="public-form-consent-error" className="text-[11px] text-amber-300">
+                      {formConsentError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="py-16 text-center text-xs text-zinc-500">
+            <div className="py-16 text-center text-xs text-zinc-400">
               This screen has no components yet.
             </div>
           )}
         </div>
       </main>
 
-      {/* Subtle Footer */}
-      <footer className="border-t border-zinc-900 py-4 px-6 text-center text-[11px] text-zinc-500">
-        Published with AppForge ·{' '}
-        <button type="button" onClick={onOpenInStudio} className="text-zinc-300 hover:text-white underline cursor-pointer">
-          Edit in Studio
-        </button>
+      {/* Transparent Business & Legal Footer */}
+      <footer className="border-t border-zinc-900 pt-5 pb-20 px-6 text-xs text-zinc-400">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-center sm:text-left">
+            <span className="font-semibold text-zinc-200">{compliance.businessName}</span> · {compliance.businessAddress} ·{' '}
+            <span>{compliance.supportEmail}</span>
+          </div>
+          <nav aria-label="Published site legal links" className="flex flex-wrap items-center justify-center gap-3 text-[11px]">
+            <button type="button" onClick={() => setComplianceTab('privacy')} className="hover:text-white underline cursor-pointer">Privacy</button>
+            <button type="button" onClick={() => setComplianceTab('terms')} className="hover:text-white underline cursor-pointer">Terms</button>
+            <button type="button" onClick={() => setComplianceTab('refund')} className="hover:text-white underline cursor-pointer">Refunds</button>
+            <button type="button" onClick={() => setComplianceTab('cookies')} className="hover:text-white underline cursor-pointer">Cookies</button>
+            <button type="button" onClick={() => setComplianceTab('licenses')} className="hover:text-white underline cursor-pointer">Licenses & SDKs</button>
+            <button type="button" onClick={() => setComplianceTab('deletion')} className="hover:text-white underline cursor-pointer">Delete Data / Unsubscribe</button>
+            <button type="button" onClick={onOpenInStudio} className="text-zinc-200 hover:text-white underline cursor-pointer">Edit in Studio</button>
+          </nav>
+        </div>
       </footer>
+
+      <CookieConsentBanner
+        enabled={compliance.includeCookieBanner}
+        onOpenCookiePolicy={() => setComplianceTab('cookies')}
+      />
+      <ComplianceHubModal
+        isOpen={complianceTab !== null}
+        onClose={() => setComplianceTab(null)}
+        initialTab={complianceTab || 'privacy'}
+        project={project}
+        readOnly
+      />
 
       {/* Modal */}
       {modal.isOpen && (

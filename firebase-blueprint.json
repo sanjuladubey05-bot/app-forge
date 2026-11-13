@@ -1,0 +1,230 @@
+{
+  "entities": {
+    "UserPublicProfile": {
+      "title": "UserPublicProfile",
+      "description": "Non-PII public profile displayed in workspace and collaborator badges.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "photoUrl": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Strictly isolated PII and Vercel connection status for the authenticated user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "vercelConnected": {
+          "type": "boolean"
+        },
+        "vercelAccountName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "vercelConnected", "updatedAt"]
+    },
+    "ForgeCloudProject": {
+      "title": "ForgeCloudProject",
+      "description": "Cloud-synced AppForge studio project stored with native maps and lists.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "isPublic": {
+          "type": "boolean"
+        },
+        "publishedUrl": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "presetName": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "projectData": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "ownerId", "name", "isPublic", "projectData", "createdAt", "updatedAt"]
+    },
+    "UploadedMediaAsset": {
+      "title": "UploadedMediaAsset",
+      "description": "Metadata for user-uploaded images stored cleanly as URLs instead of raw base64 inside project documents.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180
+        },
+        "mimeType": {
+          "type": "string",
+          "enum": ["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
+        },
+        "sizeBytes": {
+          "type": "integer"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "ownerId", "projectId", "filename", "mimeType", "sizeBytes", "url", "createdAt"]
+    },
+    "VercelDeploymentRecord": {
+      "title": "VercelDeploymentRecord",
+      "description": "Audit and polling history for user-initiated Vercel deployments and custom domains.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "projectId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "vercelDeploymentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "framework": {
+          "type": "string",
+          "enum": ["html", "react-vite", "nextjs", "vue"]
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "state": {
+          "type": "string",
+          "enum": ["QUEUED", "BUILDING", "READY", "ERROR", "CANCELED"]
+        },
+        "customDomain": {
+          "type": "string",
+          "maxLength": 253
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "ownerId", "projectId", "vercelDeploymentId", "framework", "url", "state", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/public/{docId}": {
+      "schema": { "$ref": "#/entities/UserPublicProfile" },
+      "description": "Non-PII user display profile."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated owner-only PII and Vercel account status metadata (never stores raw tokens)."
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/ForgeCloudProject" },
+      "description": "User-owned AppForge visual projects with theme tokens and multi-page trees."
+    },
+    "/assets/{assetId}": {
+      "schema": { "$ref": "#/entities/UploadedMediaAsset" },
+      "description": "Media asset metadata linked to a parent project owned by the creator."
+    },
+    "/deployments/{deployId}": {
+      "schema": { "$ref": "#/entities/VercelDeploymentRecord" },
+      "description": "Vercel deployment status and custom domain history linked to a parent project."
+    }
+  }
+}

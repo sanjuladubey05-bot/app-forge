@@ -18,7 +18,10 @@ import {
   Box
 } from 'lucide-react';
 import { ActionStep, CanvasElement, Project, ViewportMode } from '../types/editor';
-import { ensureProjectPages, evaluateCondition, sanitizeUrl } from '../utils/project-engine';
+import { ensureProjectPages, evaluateCondition, getPageTransitionClass, sanitizeUrl } from '../utils/project-engine';
+import { ensureComplianceConfig } from '../utils/compliance-audit';
+import { ComplianceHubModal, ComplianceTabId } from './ComplianceHubModal';
+import { Widget3DSandbox } from './Widget3DSandbox';
 
 interface PreviewModeProps {
   project: Project;
@@ -49,9 +52,38 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [modal, setModal] = useState<ModalState>({ isOpen: false, title: '', content: '' });
   const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [formConsentChecked, setFormConsentChecked] = useState<boolean>(false);
+  const [formConsentError, setFormConsentError] = useState<string | null>(null);
   const [dynamicVisibility, setDynamicVisibility] = useState<Record<string, boolean>>({});
+  const [complianceTab, setComplianceTab] = useState<ComplianceTabId | null>(null);
 
+  const compliance = ensureComplianceConfig(project);
   const activePage = project.pages.find((p) => p.id === activePageId) || project.pages[0];
+
+  const pageHasForm = React.useMemo(() => {
+    const check = (els: CanvasElement[]): boolean =>
+      els.some(
+        (el) =>
+          el.type === 'input' ||
+          el.type === 'textarea' ||
+          el.props.whenClicked === 'submitForm' ||
+          (el.children && check(el.children))
+      );
+    return check(activePage?.elements || []);
+  }, [activePage]);
+
+  const validateFormConsentIfNeeded = (): boolean => {
+    if (pageHasForm && compliance.requireFormConsent && !formConsentChecked) {
+      const msg = compliance.collectsKidsData
+        ? 'Please confirm Privacy Policy, Terms, and verifiable Parental/Guardian Consent before submitting.'
+        : `Please confirm Privacy Policy, Terms, and minimum age (${compliance.minimumAge}+) before submitting.`;
+      setFormConsentError(msg);
+      showToast(msg, 'warning');
+      return false;
+    }
+    setFormConsentError(null);
+    return true;
+  };
 
   const showToast = (text: string, type: ToastMessage['type'] = 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -104,6 +136,7 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
       }
 
       case 'submitForm': {
+        if (!validateFormConsentIfNeeded()) break;
         showToast(step.toastMessage || 'Form submitted successfully!', 'success');
         log(sourceName, 'Form validated & submitted', 'form', 'success');
         break;
@@ -196,6 +229,7 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
           return;
         }
         case 'submitForm': {
+          if (!validateFormConsentIfNeeded()) return;
           showToast('Form submitted successfully!', 'success');
           log(element.name, 'Form submitted and validated', 'form', 'success');
           return;
@@ -303,11 +337,11 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
             key={element.id}
             type="button"
             onClick={() => handleElementClick(element)}
-            style={{ backgroundColor: styles.backgroundColor || '#3b82f6', color: styles.textColor || '#ffffff' }}
+            style={{ backgroundColor: styles.backgroundColor || '#2563eb', color: styles.textColor || '#ffffff' }}
             className="px-5 py-2.5 rounded-lg text-sm font-semibold shadow-md transition hover:opacity-90 active:scale-95 inline-flex items-center gap-1.5 cursor-pointer"
           >
             <span>{props.text || 'Button'}</span>
-            <ArrowUpRight size={14} className="opacity-70" />
+            <ArrowUpRight size={14} className="opacity-70" aria-hidden="true" />
           </button>
         );
 
@@ -465,8 +499,7 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
           <div key={element.id} className="w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
             <img
               src={sanitizeUrl(props.imageUrl)}
-              alt={props.imageAlt || 'Media'}
-              referrerPolicy="no-referrer"
+              alt={props.imageAlt || 'Application visual asset'}
               onError={(e) => {
                 (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
               }}
@@ -479,12 +512,15 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
         return <hr key={element.id} className="w-full border-zinc-800 my-2" />;
 
       case 'toggle': {
-        const isChecked = formValues[element.id] !== undefined ? formValues[element.id] : props.toggleChecked ?? true;
+        const isChecked = formValues[element.id] !== undefined ? formValues[element.id] : props.toggleChecked ?? false;
         return (
-          <div
+          <button
             key={element.id}
+            type="button"
+            role="switch"
+            aria-checked={Boolean(isChecked)}
             onClick={() => setFormValues({ ...formValues, [element.id]: !isChecked })}
-            className="w-full flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900 cursor-pointer hover:bg-zinc-800/80 transition"
+            className="w-full flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900 text-left cursor-pointer hover:bg-zinc-800/80 transition"
           >
             <div>
               <div className="text-xs font-medium text-white">{props.label || 'Toggle'}</div>
@@ -493,7 +529,7 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
             <div className={`w-8 h-4 rounded-full p-0.5 transition ${isChecked ? 'bg-blue-600' : 'bg-zinc-700'}`}>
               <div className={`w-3 h-3 rounded-full bg-white transition ${isChecked ? 'translate-x-4' : 'translate-x-0'}`}></div>
             </div>
-          </div>
+          </button>
         );
       }
 
@@ -523,6 +559,16 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
               </tbody>
             </table>
           </div>
+        );
+
+      case 'widget3d':
+        return (
+          <Widget3DSandbox
+            key={element.id}
+            config={props.widget3d}
+            themeTokens={project.themeTokens}
+            interactive={true}
+          />
         );
 
       default:
@@ -559,6 +605,12 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
 
   return (
     <div className="min-h-screen bg-[#070709] text-zinc-100 flex flex-col select-none">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-blue-600 focus:text-white focus:text-xs font-semibold"
+      >
+        Skip to main content
+      </a>
       {/* Top Prototype Navigation Bar */}
       <header className="h-12 border-b border-zinc-800 bg-zinc-950 px-4 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-3">
@@ -642,20 +694,79 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
       </header>
 
       {/* Main Surface */}
-      <main className="flex-1 overflow-auto flex items-center justify-center p-6 bg-zinc-950">
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto flex items-center justify-center p-6 bg-zinc-950">
         <div
-          style={{ backgroundColor: activePage.canvasBg || project.canvasBg }}
-          className={`w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4`}
+          key={activePage.id}
+          style={{ backgroundColor: activePage.canvasBg || project.themeTokens?.backgroundColor || project.canvasBg }}
+          className={`w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4 ${getPageTransitionClass(activePage.transition)}`}
+          data-testid="preview-page-container"
+          data-page-transition={activePage.transition || 'fade'}
         >
           {activePage.elements.length === 0 ? (
-            <div className="py-20 text-center text-zinc-500 text-sm">
+            <div className="py-20 text-center text-zinc-400 text-sm">
               Screen {activePage.name} has no visible components.
             </div>
           ) : (
-            activePage.elements.map((el) => renderComponent(el))
+            <>
+              {activePage.elements.map((el) => renderComponent(el))}
+              {pageHasForm && compliance.requireFormConsent && (
+                <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-900/90 space-y-1.5">
+                  <label className="flex items-start gap-2.5 text-xs text-zinc-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      data-testid="preview-form-consent-checkbox"
+                      checked={formConsentChecked}
+                      onChange={(e) => {
+                        setFormConsentChecked(e.target.checked);
+                        if (e.target.checked) setFormConsentError(null);
+                      }}
+                      className="mt-0.5 accent-blue-500 cursor-pointer"
+                    />
+                    <span>
+                      I agree to the{' '}
+                      <button type="button" onClick={() => setComplianceTab('privacy')} className="underline text-blue-300 cursor-pointer">
+                        Privacy Policy
+                      </button>{' '}
+                      &{' '}
+                      <button type="button" onClick={() => setComplianceTab('terms')} className="underline text-blue-300 cursor-pointer">
+                        Terms
+                      </button>
+                      , and confirm I am {compliance.minimumAge}+
+                      {compliance.collectsKidsData ? ' (with verifiable parental/guardian consent)' : ''}.
+                    </span>
+                  </label>
+                  {formConsentError && (
+                    <p role="alert" className="text-[11px] text-amber-300">
+                      {formConsentError}
+                    </p>
+                  )}
+                </div>
+              )}
+              {compliance.includeLegalFooter && (
+                <footer className="mt-4 pt-4 border-t border-zinc-800 text-[11px] text-zinc-400 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span>
+                    {compliance.businessName} · {compliance.supportEmail}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button type="button" onClick={() => setComplianceTab('privacy')} className="underline hover:text-white cursor-pointer">Privacy</button>
+                    <button type="button" onClick={() => setComplianceTab('terms')} className="underline hover:text-white cursor-pointer">Terms</button>
+                    <button type="button" onClick={() => setComplianceTab('refund')} className="underline hover:text-white cursor-pointer">Refunds</button>
+                    <button type="button" onClick={() => setComplianceTab('cookies')} className="underline hover:text-white cursor-pointer">Cookies</button>
+                    <button type="button" onClick={() => setComplianceTab('deletion')} className="underline hover:text-white cursor-pointer">Delete Data / Unsubscribe</button>
+                  </div>
+                </footer>
+              )}
+            </>
           )}
         </div>
       </main>
+      <ComplianceHubModal
+        isOpen={complianceTab !== null}
+        onClose={() => setComplianceTab(null)}
+        initialTab={complianceTab || 'privacy'}
+        project={project}
+        readOnly
+      />
 
       {/* Popup Modal Dialog Overlay */}
       {modal.isOpen && (

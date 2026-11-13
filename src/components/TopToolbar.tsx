@@ -25,9 +25,16 @@ import {
   Moon,
   Keyboard,
   Sparkles,
-  Globe
+  Globe,
+  ShieldCheck,
+  Rocket,
+  Cloud,
+  LogIn,
+  LogOut,
+  Box
 } from 'lucide-react';
 import { Page, ViewportMode, WorkspaceMode, StudioTheme } from '../types/editor';
+import { useAuth } from '../contexts/AuthContext';
 
 interface TopToolbarProps {
   projectName: string;
@@ -50,13 +57,19 @@ interface TopToolbarProps {
   onOpenPreview: () => void;
   onOpenExport: () => void;
   onOpenPublish?: () => void;
+  onOpenDeploy?: () => void;
   onOpenAiStudio?: () => void;
+  onOpenAi3D?: () => void;
+  onSyncCloud?: () => void;
+  isSyncingCloud?: boolean;
   isSaving: boolean;
   lastSavedText: string;
   workspaceMode: WorkspaceMode;
   onChangeWorkspaceMode: (mode: WorkspaceMode) => void;
   onOpenCommandPalette: () => void;
   onOpenShortcutsModal?: () => void;
+  onOpenCompliance?: () => void;
+  complianceFailCount?: number;
   theme: StudioTheme;
   onToggleTheme: () => void;
 }
@@ -82,16 +95,23 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onOpenPreview,
   onOpenExport,
   onOpenPublish,
+  onOpenDeploy,
   onOpenAiStudio,
+  onOpenAi3D,
+  onSyncCloud,
+  isSyncingCloud = false,
   isSaving,
   lastSavedText,
   workspaceMode,
   onChangeWorkspaceMode,
   onOpenCommandPalette,
   onOpenShortcutsModal,
+  onOpenCompliance,
+  complianceFailCount = 0,
   theme,
   onToggleTheme,
 }) => {
+  const { user, signingIn, signInWithGoogle, signOut } = useAuth();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(projectName);
   const [isPageDropdownOpen, setIsPageDropdownOpen] = useState(false);
@@ -108,22 +128,23 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   };
 
   return (
-    <header className="h-12 border-b border-zinc-800 bg-zinc-950 px-2 sm:px-3 flex items-center justify-between gap-2 select-none z-30 shrink-0 overflow-hidden">
+    <header className="h-12 border-b border-zinc-800 bg-zinc-950 px-2 sm:px-3 flex items-center justify-between gap-2 select-none z-30 shrink-0 overflow-x-auto">
       {/* Left: Brand + Navigation + Project Name + Page Switcher */}
-      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink">
+      <div className="flex items-center gap-1.5 min-w-0 shrink-0">
         <button
           onClick={onBackToDashboard}
           className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition cursor-pointer whitespace-nowrap shrink-0"
           title="Return to Dashboard"
+          aria-label="Return to Dashboard"
         >
           <ArrowLeft size={14} />
-          <span className="hidden xl:inline">Dashboard</span>
+          <span className="hidden 2xl:inline">Dashboard</span>
         </button>
 
         <div className="h-4 w-px bg-zinc-800 hidden sm:block shrink-0"></div>
 
         {/* Project Name editable */}
-        <div className="flex items-center min-w-0">
+        <div className="flex items-center min-w-0 shrink-0">
           {isEditingTitle ? (
             <input
               type="text"
@@ -138,7 +159,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                   setIsEditingTitle(false);
                 }
               }}
-              className="bg-zinc-900 border border-blue-500 rounded px-2 py-0.5 text-xs text-white font-medium focus:outline-none w-28 sm:w-40"
+              className="bg-zinc-900 border border-blue-500 rounded px-2 py-0.5 text-xs text-white font-medium focus:outline-none w-28 sm:w-36"
             />
           ) : (
             <button
@@ -146,11 +167,11 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 setTitleInput(projectName);
                 setIsEditingTitle(true);
               }}
-              className="flex items-center gap-1.5 px-1.5 sm:px-2 py-1 rounded hover:bg-zinc-900 text-xs font-medium text-zinc-200 transition group cursor-pointer whitespace-nowrap min-w-0"
+              className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-zinc-900 text-xs font-medium text-zinc-200 transition group cursor-pointer whitespace-nowrap min-w-0"
               title="Click to rename project"
             >
-              <span className="truncate max-w-[95px] sm:max-w-[140px] xl:max-w-[180px]">{projectName}</span>
-              <Edit2 size={11} className="text-zinc-500 group-hover:text-blue-400 transition shrink-0 hidden sm:inline" />
+              <span className="truncate max-w-[85px] sm:max-w-[115px] 2xl:max-w-[160px]">{projectName}</span>
+              <Edit2 size={11} className="text-zinc-500 group-hover:text-blue-400 transition shrink-0 hidden 2xl:inline" />
             </button>
           )}
         </div>
@@ -164,8 +185,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             className="flex items-center gap-1 px-2 py-1 rounded-lg border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-800 hover:border-zinc-700 text-xs font-medium text-zinc-200 transition cursor-pointer whitespace-nowrap"
           >
             <FileCode2 size={13} className="text-blue-400 shrink-0" />
-            <span className="hidden sm:inline text-zinc-400">Screen:</span>
-            <span className="truncate max-w-[68px] sm:max-w-[100px]">{activePage?.name || 'Home'}</span>
+            <span className="hidden 2xl:inline text-zinc-400">Screen:</span>
+            <span className="truncate max-w-[70px] sm:max-w-[92px]">{activePage?.name || 'Home'}</span>
             <ChevronDown size={12} className="text-zinc-400 shrink-0" />
           </button>
 
@@ -312,7 +333,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         </div>
 
         {/* Zoom */}
-        <div className="hidden xl:flex items-center bg-zinc-900 border border-zinc-800 rounded-lg px-1.5 py-0.5 text-xs text-zinc-400 gap-1 font-mono">
+        <div className="hidden 2xl:flex items-center bg-zinc-900 border border-zinc-800 rounded-lg px-1.5 py-0.5 text-xs text-zinc-400 gap-1 font-mono">
           <button
             onClick={() => onChangeZoom(Math.max(50, zoom - 15))}
             className="hover:text-white transition cursor-pointer"
@@ -336,7 +357,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         {/* Quick Search & Command Palette (Ctrl+K) */}
         <button
           onClick={onOpenCommandPalette}
-          className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 transition cursor-pointer whitespace-nowrap"
+          className="hidden 2xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 transition cursor-pointer whitespace-nowrap"
           title="Quick Actions (Ctrl+K)"
         >
           <Search size={13} />
@@ -345,16 +366,30 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           </kbd>
         </button>
 
+        {/* AI 3D Studio shortcut */}
+        {onOpenAi3D && (
+          <button
+            type="button"
+            onClick={onOpenAi3D}
+            className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg border border-cyan-500/30 bg-cyan-950/30 hover:bg-cyan-900/40 text-cyan-300 hover:text-white transition cursor-pointer text-xs font-medium whitespace-nowrap"
+            title="Free & AI 3D Widget Studio"
+            data-testid="toolbar-ai-3d-btn"
+          >
+            <Box size={13} className="shrink-0" />
+            <span className="hidden 2xl:inline">3D Studio</span>
+          </button>
+        )}
+
         {/* AI Studio Generator (Ctrl+J) */}
         {onOpenAiStudio && (
           <button
             onClick={onOpenAiStudio}
-            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border border-blue-500/30 bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 hover:text-white transition cursor-pointer text-xs font-medium shadow-xs whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-blue-500/30 bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 hover:text-white transition cursor-pointer text-xs font-medium shadow-xs whitespace-nowrap"
             title="Google AI Studio Structured Generator (⌘J)"
             data-testid="toolbar-ai-studio-btn"
           >
             <Sparkles size={13} className="text-blue-400 shrink-0" />
-            <span className="hidden xl:inline">AI Studio</span>
+            <span className="hidden 2xl:inline">AI Studio</span>
             <kbd className="hidden 2xl:inline px-1 py-0.2 rounded bg-blue-900/60 border border-blue-700/50 text-[9px] font-mono text-blue-200">
               ⌘J
             </kbd>
@@ -364,12 +399,76 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         {/* Hotkeys / Shortcuts Manager */}
         {onOpenShortcutsModal && (
           <button
+            type="button"
             onClick={onOpenShortcutsModal}
             className="hidden sm:inline-flex p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
             title="Keyboard Shortcuts & Hotkeys Settings"
+            aria-label="Keyboard Shortcuts and Hotkeys Settings"
             data-testid="toolbar-shortcuts-btn"
           >
-            <Keyboard size={13} />
+            <Keyboard size={13} aria-hidden="true" />
+          </button>
+        )}
+
+        {/* Trust & Compliance Hub */}
+        {onOpenCompliance && (
+          <button
+            type="button"
+            onClick={onOpenCompliance}
+            className={`hidden sm:inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border text-xs font-medium transition cursor-pointer whitespace-nowrap shrink-0 ${
+              complianceFailCount > 0
+                ? 'border-amber-500/40 bg-amber-950/40 text-amber-200 hover:bg-amber-900/50'
+                : 'border-emerald-500/30 bg-emerald-950/30 text-emerald-300 hover:bg-emerald-900/40'
+            }`}
+            title="Trust, Legal, Accessibility & 20-Point Compliance Audit"
+            aria-label="Trust and Compliance Center"
+            data-testid="toolbar-compliance-btn"
+          >
+            <ShieldCheck size={13} aria-hidden="true" />
+            <span className="hidden 2xl:inline">Compliance</span>
+            {complianceFailCount > 0 && (
+              <span className="px-1 rounded bg-amber-500/30 text-[10px] font-mono">{complianceFailCount}</span>
+            )}
+          </button>
+        )}
+
+        {/* Firebase Auth & Cloud Sync */}
+        {user ? (
+          <div className="hidden md:flex items-center gap-1">
+            {onSyncCloud && (
+              <button
+                type="button"
+                disabled={isSyncingCloud}
+                onClick={onSyncCloud}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-emerald-300 text-xs font-medium transition cursor-pointer whitespace-nowrap"
+                title={`Sync project to Cloud Firestore (${user.email || 'Signed in'})`}
+                data-testid="toolbar-cloud-sync-btn"
+              >
+                <Cloud size={13} />
+                <span className="hidden 2xl:inline">{isSyncingCloud ? 'Syncing...' : 'Sync'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+              title={`Signed in as ${user.email || user.displayName || 'User'} — Click to sign out`}
+              aria-label="Sign out of Google account"
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={signingIn}
+            onClick={() => void signInWithGoogle()}
+            className="hidden md:flex items-center gap-1 px-2 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition cursor-pointer whitespace-nowrap"
+            title="Sign in with Google for Cloud Sync & Vercel Deploy"
+            data-testid="toolbar-signin-btn"
+          >
+            <LogIn size={13} />
+            <span className="hidden 2xl:inline">{signingIn ? 'Signing in...' : 'Sign In'}</span>
           </button>
         )}
 
@@ -385,18 +484,19 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         <button
           onClick={onSave}
           disabled={isSaving}
-          className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition cursor-pointer whitespace-nowrap"
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition cursor-pointer whitespace-nowrap"
           title="Save project changes"
+          aria-label="Save project changes"
         >
           {isSaving ? (
             <>
               <Check size={13} className="text-emerald-400" />
-              <span className="hidden sm:inline text-emerald-400">Saved</span>
+              <span className="hidden 2xl:inline text-emerald-400">Saved</span>
             </>
           ) : (
             <>
               <Save size={13} />
-              <span className="hidden xl:inline">Save</span>
+              <span className="hidden 2xl:inline">Save</span>
             </>
           )}
         </button>
@@ -412,13 +512,26 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
         <button
           onClick={onOpenExport}
-          className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-100 text-xs font-medium transition cursor-pointer whitespace-nowrap"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-100 text-xs font-medium transition cursor-pointer whitespace-nowrap"
           title="Export code, ZIP archive, and specifications"
           data-testid="toolbar-export-btn"
         >
           <Download size={13} />
-          <span className="hidden lg:inline">Export</span>
+          <span className="hidden 2xl:inline">Export</span>
         </button>
+
+        {onOpenDeploy && (
+          <button
+            type="button"
+            onClick={onOpenDeploy}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-200 hover:text-white text-xs font-semibold transition cursor-pointer whitespace-nowrap shrink-0"
+            title="Deploy to your own Vercel account & configure custom domain"
+            data-testid="toolbar-deploy-btn"
+          >
+            <Rocket size={13} />
+            <span>Deploy</span>
+          </button>
+        )}
 
         {onOpenPublish && (
           <button

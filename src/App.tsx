@@ -16,7 +16,11 @@ import {
   AppExecutionLog,
   WorkspaceMode,
   StudioTheme,
-  AlignmentType
+  AlignmentType,
+  PageSeoConfig,
+  ThemePresetName,
+  ThemeTokens,
+  Widget3DConfig
 } from './types/editor';
 import { 
   createInitialProject, 
@@ -29,6 +33,7 @@ import {
   setHomePage,
   switchActivePage,
   updatePageTransition,
+  updatePageSeo,
   addElement, 
   updateElement, 
   deleteElement, 
@@ -43,6 +48,9 @@ import {
   getAlignedElementStyles,
   alignElements
 } from './utils/project-engine';
+import { applyThemePreset, ensureThemeTokens, updateThemeTokens } from './utils/theme-engine';
+import { useAuth } from './contexts/AuthContext';
+import { saveProjectToCloud } from './utils/cloud-sync';
 import { 
   getStoredProjects, 
   saveStoredProjects, 
@@ -98,11 +106,18 @@ import {
   ExternalLink,
   Loader2
 } from 'lucide-react';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
+import { ComplianceHubModal, ComplianceTabId } from './components/ComplianceHubModal';
+import { auditProjectCompliance } from './utils/compliance-audit';
+import { LandingPage } from './components/LandingPage';
+import { Ai3DModal } from './components/Ai3DModal';
+import { DeployPanel } from './components/DeployPanel';
 
 export default function App() {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>(() => getStoredProjects());
   const [activeProjectId, setActiveId] = useState<string | null>(() => getActiveProjectId());
-  const [view, setView] = useState<'dashboard' | 'editor' | 'preview'>('dashboard');
+  const [view, setView] = useState<'landing' | 'dashboard' | 'editor' | 'preview'>('landing');
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('design');
   const [theme, setTheme] = useState<StudioTheme>('dark');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -123,7 +138,11 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [isAiStudioModalOpen, setIsAiStudioModalOpen] = useState(false);
+  const [isAi3DModalOpen, setIsAi3DModalOpen] = useState(false);
+  const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
   const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [complianceModalTab, setComplianceModalTab] = useState<ComplianceTabId | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -276,11 +295,14 @@ export default function App() {
       practice: 'Practice Project (Play-to-Build)',
       saas: 'Executive Analytics Hub',
       mobile: 'Mobile Commerce App',
+      portfolio: 'Creative Studio Portfolio',
+      shop: 'Modern Storefront',
       contact: 'Enterprise Lead Portal',
       card: 'Product Showcase Card',
+      linkinbio: '3D Creator Link-in-Bio',
       blank: 'Blank Canvas App',
     };
-    const viewport: ViewportMode = templateId === 'mobile' ? 'mobile' : 'desktop';
+    const viewport: ViewportMode = templateId === 'mobile' || templateId === 'linkinbio' ? 'mobile' : 'desktop';
     handleCreateProject(titles[templateId] || 'New AppForge App', templateId, viewport);
   };
 
@@ -338,6 +360,69 @@ export default function App() {
 
   const handleUpdatePageTransition = (pageId: string, transition: PageTransition) => {
     applyProjectMutation((proj) => updatePageTransition(proj, pageId, transition));
+    handleLogExecution('Pages', `Updated page transition to "${transition}"`, 'action', 'info');
+  };
+
+  const handleUpdatePageSeo = (pageId: string, seoPatch: Partial<PageSeoConfig>) => {
+    applyProjectMutation((proj) => updatePageSeo(proj, pageId, seoPatch));
+  };
+
+  const handleApplyThemePreset = (preset: Exclude<ThemePresetName, 'custom'>) => {
+    applyProjectMutation((proj) => applyThemePreset(proj, preset));
+    handleLogExecution('Theme', `Applied "${preset}" global design tokens`, 'action', 'success');
+  };
+
+  const handleUpdateThemeTokens = (patch: Partial<ThemeTokens>) => {
+    applyProjectMutation((proj) => updateThemeTokens(proj, patch));
+  };
+
+  const handleInsert3DWidget = (config: Widget3DConfig) => {
+    const el = createNewElement('widget3d');
+    el.name = config.title || '3D UI Widget';
+    el.props = { ...el.props, widget3d: config };
+    applyProjectMutation((proj) => addElement(proj, el));
+    setSelectedElementId(el.id);
+    setIsAi3DModalOpen(false);
+    handleLogExecution('3D Studio', `Added "${el.name}" 3D widget to screen`, 'action', 'success');
+  };
+
+  const handleUpdateDeployMeta = (patch: {
+    lastVercelProjectId?: string;
+    lastVercelProjectName?: string;
+    lastDeploymentUrl?: string;
+    customDomains?: string[];
+  }) => {
+    applyProjectMutation((proj) => ({
+      ...proj,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const handleSyncActiveProjectToCloud = async () => {
+    if (!activeProject || !user) return;
+    setIsSyncingCloud(true);
+    try {
+      await saveProjectToCloud(activeProject, user.uid);
+      setLastSavedText(`Synced to Cloud ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+      handleLogExecution('Cloud Sync', `Saved "${activeProject.name}" to Firestore`, 'action', 'success');
+    } catch (err: any) {
+      handleLogExecution('Cloud Sync', err?.message || 'Cloud sync failed', 'action', 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleImportCloudProjects = (cloudProjects: Project[]) => {
+    if (cloudProjects.length === 0) return;
+    setProjects((prev) => {
+      const map = new Map<string, Project>();
+      cloudProjects.forEach((cp) => map.set(cp.id, ensureProjectPages(cp)));
+      prev.forEach((lp) => {
+        if (!map.has(lp.id)) map.set(lp.id, lp);
+      });
+      return Array.from(map.values());
+    });
   };
 
   // Element Actions
@@ -783,6 +868,34 @@ export default function App() {
     );
   }
 
+  // If on Landing Page
+  if (view === 'landing') {
+    return (
+      <>
+        <LandingPage
+          onOpenStudio={() => setView('dashboard')}
+          onQuickStartTemplate={(templateId) => handleQuickCreate(templateId)}
+          onOpenCompliance={(tab) => setComplianceModalTab(tab)}
+        />
+        <ComplianceHubModal
+          isOpen={complianceModalTab !== null}
+          onClose={() => setComplianceModalTab(null)}
+          initialTab={complianceModalTab || 'privacy'}
+          project={activeProject || projects[0] || null}
+          onDeleteAllLocalProjects={() => {
+            saveStoredProjects([]);
+            setProjects([]);
+            setActiveId(null);
+            setActiveProjectId(null);
+          }}
+        />
+        <CookieConsentBanner
+          onOpenCookiePolicy={() => setComplianceModalTab('cookies')}
+        />
+      </>
+    );
+  }
+
   // If on Dashboard
   if (view === 'dashboard' || !activeProject) {
     return (
@@ -794,11 +907,29 @@ export default function App() {
           onDeleteProject={handleDeleteProject}
           onDuplicateProject={handleDuplicateProject}
           onQuickCreate={handleQuickCreate}
+          onOpenCompliance={(tab = 'privacy') => setComplianceModalTab(tab)}
+          onBackToLanding={() => setView('landing')}
+          onImportCloudProjects={handleImportCloudProjects}
         />
         <ProjectCreateModal
           isOpen={isCreateModalOpen}
           onClose={() => setIsCreateModalOpen(false)}
           onCreate={handleCreateProject}
+        />
+        <ComplianceHubModal
+          isOpen={complianceModalTab !== null}
+          onClose={() => setComplianceModalTab(null)}
+          initialTab={complianceModalTab || 'privacy'}
+          project={activeProject || projects[0] || null}
+          onDeleteAllLocalProjects={() => {
+            saveStoredProjects([]);
+            setProjects([]);
+            setActiveId(null);
+            setActiveProjectId(null);
+          }}
+        />
+        <CookieConsentBanner
+          onOpenCookiePolicy={() => setComplianceModalTab('cookies')}
         />
       </>
     );
@@ -807,9 +938,16 @@ export default function App() {
   // Active Selected Element and Page (deep recursive lookup for nested containers)
   const activePage = getActivePage(activeProject);
   const selectedElement = selectedElementId ? findElementDeep(activePage.elements, selectedElementId) : null;
+  const complianceReport = auditProjectCompliance(activeProject);
 
   return (
     <div className={`h-screen w-screen flex flex-col ${theme === 'light' ? 'bg-zinc-100 text-zinc-900' : 'bg-zinc-950 text-zinc-100'} overflow-hidden select-none`}>
+      <a
+        href="#studio-main-canvas"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-3 focus:py-2 focus:rounded-lg focus:bg-blue-600 focus:text-white focus:text-xs font-semibold"
+      >
+        Skip to studio canvas
+      </a>
       {/* 1. Top Toolbar */}
       <TopToolbar
         projectName={activeProject.name}
@@ -840,7 +978,11 @@ export default function App() {
         onOpenPreview={() => setView('preview')}
         onOpenExport={() => setIsExportModalOpen(true)}
         onOpenPublish={handleOpenPublish}
+        onOpenDeploy={() => setIsDeployModalOpen(true)}
         onOpenAiStudio={() => setIsAiStudioModalOpen(true)}
+        onOpenAi3D={() => setIsAi3DModalOpen(true)}
+        onSyncCloud={handleSyncActiveProjectToCloud}
+        isSyncingCloud={isSyncingCloud}
         isSaving={isSaving}
         lastSavedText={lastSavedText}
         workspaceMode={workspaceMode}
@@ -853,6 +995,8 @@ export default function App() {
         }}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
+        onOpenCompliance={() => setComplianceModalTab('checker')}
+        complianceFailCount={complianceReport.failedCount}
         theme={theme}
         onToggleTheme={() => {
           setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -868,7 +1012,7 @@ export default function App() {
           onLogExecution={handleLogExecution}
         />
       ) : (
-        <div className="flex-1 flex overflow-hidden min-h-0 relative">
+        <main id="studio-main-canvas" tabIndex={-1} className="flex-1 flex overflow-hidden min-h-0 relative">
           {/* Left Sidebar (Desktop: pinned side rail) */}
           <div className="hidden lg:flex shrink-0">
             <LeftSidebar
@@ -895,6 +1039,7 @@ export default function App() {
               onRenameElement={handleRenameElement}
               onGroupSelected={handleGroupSelected}
               onUngroupContainer={handleUngroupContainer}
+              onOpenAi3DModal={() => setIsAi3DModalOpen(true)}
             />
           </div>
 
@@ -952,6 +1097,10 @@ export default function App() {
                     onRenameElement={handleRenameElement}
                     onGroupSelected={handleGroupSelected}
                     onUngroupContainer={handleUngroupContainer}
+                    onOpenAi3DModal={() => {
+                      setIsAi3DModalOpen(true);
+                      setMobileDrawer('none');
+                    }}
                   />
                 </div>
               </div>
@@ -975,6 +1124,7 @@ export default function App() {
             zoom={activeProject.zoom}
             canvasBg={activeProject.canvasBg}
             canvasPadding={activeProject.canvasPadding}
+            themeTokens={ensureThemeTokens(activeProject)}
             snapToGrid={activeProject.snapToGrid ?? true}
             showGuides={activeProject.showGuides ?? false}
             onToggleSnapToGrid={() => {
@@ -1007,6 +1157,11 @@ export default function App() {
               onToggleVisibility={handleToggleVisibility}
               onToggleLock={handleToggleLock}
               onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
+              onApplyThemePreset={handleApplyThemePreset}
+              onUpdateThemeTokens={handleUpdateThemeTokens}
+              onUpdatePageSeo={handleUpdatePageSeo}
+              onUpdatePageTransition={handleUpdatePageTransition}
+              onOpenAi3DModal={() => setIsAi3DModalOpen(true)}
             />
           </div>
 
@@ -1043,12 +1198,20 @@ export default function App() {
                       setIsShortcutsModalOpen(true);
                       setMobileDrawer('none');
                     }}
+                    onApplyThemePreset={handleApplyThemePreset}
+                    onUpdateThemeTokens={handleUpdateThemeTokens}
+                    onUpdatePageSeo={handleUpdatePageSeo}
+                    onUpdatePageTransition={handleUpdatePageTransition}
+                    onOpenAi3DModal={() => {
+                      setIsAi3DModalOpen(true);
+                      setMobileDrawer('none');
+                    }}
                   />
                 </div>
               </div>
             </div>
           )}
-        </div>
+        </main>
       )}
 
       {/* Mobile Bottom Navigation Bar */}
@@ -1176,6 +1339,30 @@ export default function App() {
           project={activeProject}
           onInsertAiNodes={handleInsertAiNodes}
           onImportForgeProject={handleImportForgeProject}
+          onOpenAi3DModal={() => {
+            setIsAiStudioModalOpen(false);
+            setIsAi3DModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* Free & AI 3D Widget Studio Modal */}
+      {activeProject && (
+        <Ai3DModal
+          isOpen={isAi3DModalOpen}
+          onClose={() => setIsAi3DModalOpen(false)}
+          themeTokens={ensureThemeTokens(activeProject)}
+          onInsertWidget={handleInsert3DWidget}
+        />
+      )}
+
+      {/* Vercel Own-Account Deployment & Custom Domain Modal */}
+      {activeProject && (
+        <DeployPanel
+          isOpen={isDeployModalOpen}
+          onClose={() => setIsDeployModalOpen(false)}
+          project={activeProject}
+          onUpdateDeployMeta={handleUpdateDeployMeta}
         />
       )}
 
@@ -1300,6 +1487,25 @@ export default function App() {
           onOpenPreview={() => setView('preview')}
         />
       </div>
+
+      {/* Trust, Legal, Accessibility & 20-Point Compliance Hub */}
+      <ComplianceHubModal
+        isOpen={complianceModalTab !== null}
+        onClose={() => setComplianceModalTab(null)}
+        initialTab={complianceModalTab || 'checker'}
+        project={activeProject}
+        onUpdateProject={(updater) => applyProjectMutation(updater)}
+        onDeleteAllLocalProjects={() => {
+          saveStoredProjects([]);
+          setProjects([]);
+          setActiveId(null);
+          setActiveProjectId(null);
+          setView('dashboard');
+        }}
+      />
+      <CookieConsentBanner
+        onOpenCookiePolicy={() => setComplianceModalTab('cookies')}
+      />
     </div>
   );
 }

@@ -13,10 +13,67 @@ export type ComponentType =
   | 'image' 
   | 'divider' 
   | 'toggle'
-  | 'table';
+  | 'table'
+  | 'widget3d';
+
+export type ThemePresetName =
+  | 'midnight-saas'
+  | 'minimal-light'
+  | 'cyberpunk-neon'
+  | 'warm-editorial'
+  | 'custom';
+
+export interface ThemeTokens {
+  presetName: ThemePresetName;
+  primaryColor: string;
+  secondaryColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
+  borderColor: string;
+  fontFamily: 'Inter' | 'Plus Jakarta Sans' | 'Space Grotesk' | 'Georgia' | 'JetBrains Mono';
+  borderRadius: '4px' | '8px' | '12px' | '16px' | '24px';
+}
+
+export interface PageSeoConfig {
+  title?: string;
+  metaDescription?: string;
+  faviconUrl?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  ogType?: 'website' | 'article' | 'product';
+  canonicalUrl?: string;
+}
+
+export type Widget3DPresetId =
+  | 'glass-tilt-card'
+  | 'neon-iso-button'
+  | 'webgl-orbital-prism'
+  | 'webgl-particle-field'
+  | 'webgl-wireframe-terrain'
+  | 'ai-custom';
+
+export interface Widget3DConfig {
+  presetId: Widget3DPresetId;
+  presetMode: 'css-3d' | 'threejs-webgl';
+  title: string;
+  subtitle?: string;
+  accentColor?: string;
+  heightPx?: number;
+  autoRotate?: boolean;
+  interactiveTilt?: boolean;
+  htmlSnippet?: string;
+  cssSnippet?: string;
+  jsSnippet?: string;
+  promptUsed?: string;
+}
+
+export type ExportFramework = 'html' | 'react-vite' | 'nextjs' | 'vue';
 
 export type ViewportMode = 'desktop' | 'tablet' | 'mobile';
-export type PageTransition = 'fade' | 'slide-left' | 'slide-up' | 'none';
+export type PageTransition = 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'scale' | 'none';
 
 export interface NavLinkItem {
   label: string;
@@ -37,6 +94,7 @@ export interface ComponentProps {
   metricTrendPositive?: boolean;
   imageUrl?: string;
   imageAlt?: string;
+  imageLicense?: string;
   options?: string[];
   toggleChecked?: boolean;
   tableHeaders?: string[];
@@ -50,6 +108,8 @@ export interface ComponentProps {
   // Data / Form wiring
   dataCollectionId?: string;
   unknownType?: string;
+  // 3D UI Widget props
+  widget3d?: Widget3DConfig;
   // Simple "When Clicked" / Link To interaction bindings
   whenClicked?: 'none' | 'openPage' | 'openUrl' | 'showPopup' | 'showToast' | 'submitForm';
   targetPageId?: string;
@@ -321,6 +381,23 @@ export interface Page {
   transition: PageTransition;
   elements: CanvasElement[];
   canvasBg?: string;
+  seo?: PageSeoConfig;
+}
+
+export interface LegalComplianceConfig {
+  businessName: string;
+  businessAddress: string;
+  supportEmail: string;
+  privacyEmail: string;
+  registrationId: string;
+  refundWindowDays: number;
+  collectsKidsData: boolean;
+  minimumAge: number;
+  requireFormConsent: boolean;
+  includeCookieBanner: boolean;
+  includeLegalFooter: boolean;
+  unsubscribeEmail: string;
+  marketingSubscribed: boolean;
 }
 
 export interface Project {
@@ -333,6 +410,9 @@ export interface Project {
   zoom: number;
   canvasBg: string;
   canvasPadding: 'sm' | 'md' | 'lg' | 'xl';
+  // Global design tokens & responsive stacking rule
+  themeTokens?: ThemeTokens;
+  responsiveStackBelowPx?: number;
   // Multi-page architecture
   pages: Page[];
   activePageId: string;
@@ -342,6 +422,13 @@ export interface Project {
   variables?: AppVariable[];
   // Global Keyboard Shortcuts Settings Configuration
   customShortcuts?: Record<string, string>;
+  // Legal, Privacy & Business Transparency Config
+  compliance?: LegalComplianceConfig;
+  // Vercel Deploy & Domain state (no tokens)
+  lastVercelProjectId?: string;
+  lastVercelProjectName?: string;
+  lastDeploymentUrl?: string;
+  customDomains?: string[];
   // Canvas editing helpers
   snapToGrid?: boolean;
   showGuides?: boolean;

@@ -3,6 +3,7 @@ import {
   CanvasElement, 
   ComponentType, 
   Page, 
+  ThemeTokens,
   ViewportMode 
 } from '../types/editor';
 import { 
@@ -20,6 +21,7 @@ import {
   FolderPlus
 } from 'lucide-react';
 import { QuickAddRadialMenu } from './QuickAddRadialMenu';
+import { Widget3DSandbox } from './Widget3DSandbox';
 
 interface CanvasAreaProps {
   activePage: Page;
@@ -35,6 +37,7 @@ interface CanvasAreaProps {
   zoom: number;
   canvasBg: string;
   canvasPadding: string;
+  themeTokens?: ThemeTokens;
   snapToGrid?: boolean;
   showGuides?: boolean;
   onToggleSnapToGrid?: () => void;
@@ -55,6 +58,7 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   zoom,
   canvasBg,
   canvasPadding,
+  themeTokens,
   snapToGrid = true,
   showGuides = false,
   onToggleSnapToGrid,
@@ -524,36 +528,44 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
             </div>
           );
 
-        case 'image':
+        case 'image': {
+          const hasAlt = Boolean(props.imageAlt && props.imageAlt.trim().length >= 4);
           return (
-            <div className="w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+            <div className="relative w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
               <img
                 src={props.imageUrl}
-                alt={props.imageAlt || 'Media'}
-                referrerPolicy="no-referrer"
+                alt={props.imageAlt || 'Image missing screen-reader alt description'}
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.opacity = '0.2';
                 }}
                 className="w-full h-44 object-cover bg-zinc-900"
               />
+              {!hasAlt && (
+                <div className="px-2.5 py-1 bg-amber-950/90 border-t border-amber-500/40 text-[10px] text-amber-200 font-medium">
+                  Accessibility: Add descriptive Alt Text in Properties
+                </div>
+              )}
             </div>
           );
+        }
 
         case 'divider':
           return <hr className="w-full border-zinc-800 my-2" />;
 
-        case 'toggle':
+        case 'toggle': {
+          const isChecked = Boolean(props.toggleChecked);
           return (
             <div className="w-full flex items-center justify-between p-3 rounded-lg border border-zinc-800 bg-zinc-900">
               <div>
                 <div className="text-xs font-medium text-white">{props.label || 'Toggle'}</div>
                 {props.subtext && <div className="text-[10px] text-zinc-400 mt-0.5">{props.subtext}</div>}
               </div>
-              <div className="w-8 h-4 rounded-full p-0.5 bg-blue-600 transition">
-                <div className="w-3 h-3 rounded-full bg-white translate-x-4 transition"></div>
+              <div className={`w-8 h-4 rounded-full p-0.5 transition ${isChecked ? 'bg-blue-600' : 'bg-zinc-700'}`}>
+                <div className={`w-3 h-3 rounded-full bg-white transition ${isChecked ? 'translate-x-4' : 'translate-x-0'}`}></div>
               </div>
             </div>
           );
+        }
 
         case 'table':
           return (
@@ -583,6 +595,16 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
             </div>
           );
 
+        case 'widget3d':
+          return (
+            <Widget3DSandbox
+              config={props.widget3d}
+              themeTokens={themeTokens}
+              interactive={false}
+              onSelect={() => onSelectElement(element.id)}
+            />
+          );
+
         default:
           return null;
       }
@@ -591,6 +613,26 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
     return (
       <div
         key={element.id}
+        tabIndex={0}
+        role="button"
+        aria-pressed={isSelected}
+        aria-label={`${element.type} element: ${element.name}`}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            e.stopPropagation();
+            onSelectElement(element.id);
+          } else if (e.altKey && e.key === 'ArrowUp' && index > 0) {
+            e.preventDefault();
+            e.stopPropagation();
+            onMoveElement(element.id, 'up');
+          } else if (e.altKey && e.key === 'ArrowDown' && index < siblingsLength - 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            onMoveElement(element.id, 'down');
+          }
+        }}
         onClick={(e) => {
           e.stopPropagation();
           onSelectElement(element.id);

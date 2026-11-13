@@ -47,7 +47,9 @@ import {
   StretchHorizontal,
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
-  AlignJustify
+  AlignJustify,
+  Upload,
+  Loader2
 } from 'lucide-react';
 import { 
   CanvasElement, 
@@ -60,6 +62,8 @@ import {
 } from '../types/editor';
 import { getActivePage } from '../utils/project-engine';
 import { PREBUILT_SECTIONS, PrebuiltSection, SectionCategory } from '../utils/section-library';
+import { LICENSED_STOCK_ASSETS } from '../utils/licensed-assets';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LeftSidebarProps {
   project: Project;
@@ -87,6 +91,7 @@ interface LeftSidebarProps {
   onRenameElement: (id: string, name: string) => void;
   onGroupSelected: () => void;
   onUngroupContainer: (containerId: string) => void;
+  onOpenAi3DModal?: () => void;
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
@@ -113,7 +118,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onGroupSelected,
   onUngroupContainer,
   onAlignElements,
+  onOpenAi3DModal,
 }) => {
+  const { user, signInWithGoogle, getIdToken } = useAuth();
   const [componentSearch, setComponentSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [focusedItemIndex, setFocusedItemIndex] = useState<number>(0);
@@ -125,16 +132,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [editingPageTitle, setEditingPageTitle] = useState('');
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [editingElementName, setEditingElementName] = useState('');
+  const [uploadingAsset, setUploadingAsset] = useState(false);
+  const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
+  const [uploadedAssets, setUploadedAssets] = useState<{ url: string; name: string }[]>([]);
 
   const activePage = getActivePage(project);
 
-  const stockAssets = [
-    { name: 'Analytics Pulse', url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80', cat: 'Analytics' },
-    { name: 'Vibrant Mesh Art', url: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=800&q=80', cat: 'Abstract' },
-    { name: 'Engineering Workspace', url: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=800&q=80', cat: 'Tech' },
-    { name: 'Product Team Flow', url: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80', cat: 'Team' },
-    { name: 'Cloud Infrastructure', url: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80', cat: 'Cloud' },
-  ];
+  const stockAssets = LICENSED_STOCK_ASSETS;
 
   const componentSections = [
     {
@@ -263,6 +267,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           desc: 'Structured columns and records', 
           icon: Table,
           tags: ['table', 'grid', 'data', 'records', 'rows', 'columns', 'spreadsheet']
+        },
+      ],
+    },
+    {
+      id: '3d',
+      name: '3D & Spatial',
+      items: [
+        {
+          type: 'widget3d' as ComponentType,
+          title: '3D UI Widget',
+          desc: 'Interactive CSS 3D or WebGL scene',
+          icon: Box,
+          tags: ['3d', 'webgl', 'threejs', 'interactive', 'spatial', 'prism', 'card']
         },
       ],
     },
@@ -501,6 +518,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         if (selectedTag === 'typography') return sectionId === 'typography' || tags.includes('typography') || tags.includes('text');
                         if (selectedTag === 'forms') return sectionId === 'forms' || tags.includes('form') || tags.includes('button');
                         if (selectedTag === 'data') return sectionId === 'data' || tags.includes('data');
+                        if (selectedTag === '3d') return sectionId === '3d' || tags.includes('3d');
                         return tags.includes(selectedTag);
                       };
                       const flatItems = componentSections.flatMap((sec) =>
@@ -560,6 +578,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     { id: 'typography', label: 'Text' },
                     { id: 'forms', label: 'Forms' },
                     { id: 'data', label: 'Data' },
+                    { id: '3d', label: '3D' },
                   ].map((tag) => (
                     <button
                       key={tag.id}
@@ -579,6 +598,18 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     </button>
                   ))}
                 </div>
+
+                {onOpenAi3DModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenAi3DModal}
+                    data-testid="sidebar-open-3d-studio-btn"
+                    className="w-full mt-1 py-1.5 px-2.5 rounded-lg border border-blue-500/30 bg-blue-950/30 hover:bg-blue-900/40 text-blue-300 hover:text-white text-[11px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition"
+                  >
+                    <Sparkles size={12} className="text-blue-400" />
+                    <span>Open AI 3D Studio &amp; Presets</span>
+                  </button>
+                )}
               </div>
 
               {/* Align Elements Section */}
@@ -737,6 +768,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 if (selectedTag === 'typography') return sectionId === 'typography' || tags.includes('typography') || tags.includes('text');
                 if (selectedTag === 'forms') return sectionId === 'forms' || tags.includes('form') || tags.includes('button');
                 if (selectedTag === 'data') return sectionId === 'data' || tags.includes('data');
+                if (selectedTag === '3d') return sectionId === '3d' || tags.includes('3d');
                 return tags.includes(selectedTag);
               };
 
@@ -1165,7 +1197,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       >
                         <option value="fade">Fade</option>
                         <option value="slide-left">Slide Left</option>
+                        <option value="slide-right">Slide Right</option>
                         <option value="slide-up">Slide Up</option>
+                        <option value="scale">Zoom Scale</option>
                         <option value="none">Instant</option>
                       </select>
                     </div>
@@ -1225,34 +1259,139 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
+              {/* Cloud Image Upload */}
+              <div className="p-2.5 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-2">
+                <div className="text-[10px] font-semibold text-zinc-300 uppercase tracking-wider">
+                  Cloud Media Upload (Max 2MB)
+                </div>
+                {!user ? (
+                  <button
+                    type="button"
+                    onClick={signInWithGoogle}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-[11px] font-medium cursor-pointer transition"
+                  >
+                    Sign in with Google to Upload Media
+                  </button>
+                ) : (
+                  <label className="w-full py-2 px-3 rounded-lg border border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950 text-zinc-200 text-[11px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition">
+                    {uploadingAsset ? <Loader2 size={13} className="animate-spin text-blue-400" /> : <Upload size={13} className="text-blue-400" />}
+                    <span>{uploadingAsset ? 'Uploading...' : 'Upload Image (Cloud)'}</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="sr-only"
+                      disabled={uploadingAsset}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          setUploadFeedback('File exceeds 2MB limit.');
+                          return;
+                        }
+                        setUploadingAsset(true);
+                        setUploadFeedback(null);
+                        try {
+                          const token = await getIdToken();
+                          if (!token) throw new Error('Authentication token unavailable.');
+                          const base64Data = await new Promise<string>((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(String(reader.result || ''));
+                            reader.onerror = () => reject(new Error('Failed to read file.'));
+                            reader.readAsDataURL(file);
+                          });
+                          const resp = await fetch('/api/assets/upload', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              Authorization: `Bearer ${token}`,
+                            },
+                            body: JSON.stringify({
+                              filename: file.name,
+                              mimeType: file.type,
+                              base64Data,
+                              projectId: project.id,
+                            }),
+                          });
+                          const data = await resp.json();
+                          if (!resp.ok || !data?.ok || !data?.asset?.url) {
+                            throw new Error(data?.error || 'Upload failed.');
+                          }
+                          setUploadedAssets((prev) => [{ url: data.asset.url, name: file.name }, ...prev]);
+                          onAddComponent('image', {
+                            imageUrl: data.asset.url,
+                            imageAlt: file.name.replace(/\.[^.]+$/, ''),
+                            imageLicense: 'User uploaded asset',
+                          });
+                          setUploadFeedback(`Uploaded ${file.name}`);
+                        } catch (err: any) {
+                          setUploadFeedback(err?.message || 'Cloud upload failed.');
+                        } finally {
+                          setUploadingAsset(false);
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+                {uploadFeedback && (
+                  <p className="text-[10px] text-blue-300">{uploadFeedback}</p>
+                )}
+                {uploadedAssets.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {uploadedAssets.map((a) => (
+                      <button
+                        key={a.url}
+                        type="button"
+                        onClick={() =>
+                          onAddComponent('image', {
+                            imageUrl: a.url,
+                            imageAlt: a.name,
+                            imageLicense: 'User uploaded asset',
+                          })
+                        }
+                        className="w-full text-left px-2 py-1 rounded bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-[10px] text-zinc-300 truncate cursor-pointer"
+                      >
+                        + {a.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                Quick Insert Imagery
+                Quick Insert Licensed Imagery (CC0 1.0)
               </span>
               <div className="grid grid-cols-1 gap-2.5">
-                {stockAssets.map((asset, i) => (
-                  <div
-                    key={i}
-                    onClick={() => onAddComponent('image', { imageUrl: asset.url, imageAlt: asset.name })}
-                    className="group relative rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 cursor-pointer hover:border-zinc-700 transition"
+                {stockAssets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() =>
+                      onAddComponent('image', {
+                        imageUrl: asset.url,
+                        imageAlt: asset.alt,
+                        imageLicense: asset.license,
+                      })
+                    }
+                    className="group relative w-full text-left rounded-xl overflow-hidden border border-zinc-800 bg-zinc-900 cursor-pointer hover:border-zinc-700 transition"
                   >
                     <img
                       src={asset.url}
-                      alt={asset.name}
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.opacity = '0.25';
-                      }}
+                      alt={asset.alt}
                       className="w-full h-24 object-cover bg-zinc-800"
                     />
-                    <div className="p-2 flex items-center justify-between">
-                      <span className="text-xs font-medium text-zinc-200 truncate">{asset.name}</span>
-                      <span className="text-[9px] font-mono text-zinc-500">{asset.cat}</span>
+                    <div className="p-2 space-y-0.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-zinc-200 truncate">{asset.name}</span>
+                        <span className="text-[9px] font-mono text-zinc-400">{asset.cat}</span>
+                      </div>
+                      <div className="text-[10px] text-emerald-400 font-mono truncate">{asset.license}</div>
                     </div>
                     <div className="absolute inset-0 bg-blue-600/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-semibold gap-1">
-                      <Plus size={14} />
+                      <Plus size={14} aria-hidden="true" />
                       <span>Add to Canvas</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>

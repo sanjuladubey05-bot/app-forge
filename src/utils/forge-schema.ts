@@ -4,6 +4,7 @@
  */
 
 import { CanvasElement, ComponentType, Page, Project } from '../types/editor';
+import { LICENSED_STOCK_ASSETS } from './licensed-assets';
 
 /**
  * Standard Forge Project JSON Specification (Production Schema)
@@ -113,6 +114,7 @@ export const FORGE_JSON_SCHEMA_DEFINITION = {
             'Image',
             'Table',
             'Divider',
+            '3D-Widget',
           ],
         },
         props: { type: 'object' },
@@ -159,6 +161,8 @@ const KNOWN_TYPES = new Set<string>([
   'image',
   'table',
   'divider',
+  'widget3d',
+  '3d-widget',
 ]);
 
 function capitalizeType(type: string): string {
@@ -178,6 +182,8 @@ function capitalizeType(type: string): string {
     image: 'Image',
     table: 'Table',
     divider: 'Divider',
+    widget3d: '3D-Widget',
+    '3d-widget': '3D-Widget',
   };
   return map[type.toLowerCase()] || type;
 }
@@ -199,6 +205,8 @@ function normalizeType(type: string): ComponentType {
     image: 'image',
     table: 'table',
     divider: 'divider',
+    widget3d: 'widget3d',
+    '3d-widget': 'widget3d',
   };
   return map[(type || '').toLowerCase()] || 'text';
 }
@@ -462,11 +470,11 @@ export function projectToForgeJson(project: Project): ForgeProject {
     appName: project.name,
     platform: project.viewport === 'mobile' ? 'mobile' : 'web',
     theme: {
-      primaryColor: '#2563EB',
-      backgroundColor: project.canvasBg || '#09090b',
-      textColor: '#FFFFFF',
-      fontFamily: 'Inter',
-      borderRadius: '8px',
+      primaryColor: project.themeTokens?.primaryColor || '#2563EB',
+      backgroundColor: project.themeTokens?.backgroundColor || project.canvasBg || '#09090b',
+      textColor: project.themeTokens?.textColor || '#FFFFFF',
+      fontFamily: project.themeTokens?.fontFamily || 'Inter',
+      borderRadius: project.themeTokens?.borderRadius || '8px',
     },
     pages,
   };
@@ -677,7 +685,7 @@ export function generateForgeNodesFromPrompt(prompt: string): ForgeNode[] {
             type: 'Card',
             props: {
               text: 'Enterprise',
-              subtext: 'Dedicated cloud infrastructure, SOC2 compliance, and SLAs.',
+              subtext: 'Dedicated cloud workspace, role-based access, and audit logs.',
             },
             styles: {
               width: 'third',
@@ -757,9 +765,9 @@ export function generateForgeNodesFromPrompt(prompt: string): ForgeNode[] {
         props: {
           tableHeaders: ['Account Name', 'Plan Tier', 'Seat Count', 'Billing Status'],
           tableRows: [
-            ['Stripe Technologies', 'Enterprise SLA', '120 Seats', 'Paid - Verified'],
-            ['Vercel Infrastructure', 'Pro Platform', '45 Seats', 'Paid - Verified'],
-            ['Linear Systems', 'Pro Platform', '30 Seats', 'Paid - Verified'],
+            ['Stripe Technologies', 'Enterprise Plan', '120 Seats', 'Paid'],
+            ['Vercel Infrastructure', 'Pro Platform', '45 Seats', 'Paid'],
+            ['Linear Systems', 'Pro Platform', '30 Seats', 'Paid'],
             ['Supabase Database', 'Custom Cloud', '80 Seats', 'Pending Invoice'],
           ],
         },
@@ -803,7 +811,7 @@ export function generateForgeNodesFromPrompt(prompt: string): ForgeNode[] {
           {
             id: `node_auth_remember_${Date.now()}`,
             type: 'Toggle',
-            props: { label: 'Remember this browser for 30 days', subtext: 'Enables instant authentication tokens' },
+            props: { label: 'Remember this browser for 30 days', subtext: 'Optional session cookie (off by default)', toggleChecked: false },
             styles: { marginBottom: '20px' },
           },
           {
@@ -841,8 +849,9 @@ export function generateForgeNodesFromPrompt(prompt: string): ForgeNode[] {
             id: `node_prod_img_${Date.now()}`,
             type: 'Image',
             props: {
-              imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80',
-              imageAlt: 'Wireless Pro Headphones',
+              imageUrl: LICENSED_STOCK_ASSETS[1].url,
+              imageAlt: LICENSED_STOCK_ASSETS[1].alt,
+              imageLicense: LICENSED_STOCK_ASSETS[1].license,
             },
             styles: { borderRadius: '12px', marginBottom: '16px' },
           },

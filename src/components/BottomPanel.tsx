@@ -24,6 +24,7 @@ import {
   Project 
 } from '../types/editor';
 import { createDefaultActionStep, getActivePage } from '../utils/project-engine';
+import { auditProjectCompliance } from '../utils/compliance-audit';
 
 interface BottomPanelProps {
   project: Project;
@@ -123,6 +124,18 @@ export const BottomPanel: React.FC<BottomPanelProps> = ({
       name: 'Navigation Action Target Check',
       status: brokenLinks === 0 ? 'pass' : 'fail',
       message: brokenLinks === 0 ? 'All navigation actions point to real pages.' : `${brokenLinks} broken page link(s) found.`,
+    });
+
+    // Test 4: 20-Point Legal, Privacy, Accessibility & Fair UX Compliance
+    const complianceReport = auditProjectCompliance(project);
+    results.push({
+      id: 't4',
+      name: '20-Point Trust & Compliance Audit',
+      status: complianceReport.failedCount === 0 ? 'pass' : 'fail',
+      message:
+        complianceReport.failedCount === 0
+          ? `Score ${complianceReport.score}% (${complianceReport.passedCount}/20 verified, zero dark patterns).`
+          : `${complianceReport.failedCount} compliance issue(s) found — open Trust & Compliance to Auto-Fix.`,
     });
 
     setTestResults(results);

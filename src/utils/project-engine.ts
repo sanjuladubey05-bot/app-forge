@@ -9,8 +9,12 @@ import {
   ActionStep,
   ActionCondition,
   ComponentInteraction,
-  AlignmentType
+  AlignmentType,
+  PageSeoConfig
 } from '../types/editor';
+import { LICENSED_STOCK_ASSETS } from './licensed-assets';
+import { ensureComplianceConfig } from './compliance-audit';
+import { ensureThemeTokens } from './theme-engine';
 
 export function createNewElement(type: ComponentType): CanvasElement {
   const id = 'el_' + Math.random().toString(36).substring(2, 9);
@@ -74,14 +78,15 @@ export function createNewElement(type: ComponentType): CanvasElement {
       metricTrendPositive: true,
     },
     image: {
-      imageUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80',
-      imageAlt: 'Analytics and growth overview',
+      imageUrl: LICENSED_STOCK_ASSETS[0].url,
+      imageAlt: LICENSED_STOCK_ASSETS[0].alt,
+      imageLicense: LICENSED_STOCK_ASSETS[0].license,
     },
     divider: {},
     toggle: {
       label: 'Enable Real-time Sync',
-      toggleChecked: true,
-      subtext: 'Automatically push changes to live instances.',
+      toggleChecked: false,
+      subtext: 'Opt-in to push changes automatically.',
     },
     table: {
       tableHeaders: ['Project Name', 'Status', 'Members', 'Updated'],
@@ -90,6 +95,18 @@ export function createNewElement(type: ComponentType): CanvasElement {
         ['Analytics Engine', 'Building', '2 devs', '2 hrs ago'],
         ['Mobile App API', 'Deployed', '6 devs', 'Yesterday'],
       ],
+    },
+    widget3d: {
+      widget3d: {
+        presetId: 'webgl-orbital-prism',
+        presetMode: 'threejs-webgl',
+        title: 'Interactive 3D Showcase',
+        subtitle: 'Drag to orbit · Procedural WebGL scene',
+        accentColor: '#38bdf8',
+        heightPx: 280,
+        autoRotate: true,
+        interactiveTilt: true,
+      },
     },
   };
 
@@ -121,7 +138,7 @@ export function createNewElement(type: ComponentType): CanvasElement {
       padding: 'md',
       borderRadius: 'md',
       width: 'auto',
-      backgroundColor: '#3b82f6',
+      backgroundColor: '#2563eb',
       textColor: '#ffffff',
       shadow: 'sm',
       opacity: 100,
@@ -245,6 +262,17 @@ export function createNewElement(type: ComponentType): CanvasElement {
       width: 'full',
       opacity: 100,
     },
+    widget3d: {
+      backgroundColor: '#121215',
+      borderColor: '#27272a',
+      borderWidth: '1px',
+      borderStyle: 'solid',
+      borderRadius: 'xl',
+      padding: 'none',
+      width: 'full',
+      shadow: 'lg',
+      opacity: 100,
+    },
   };
 
   const readableNames: Record<ComponentType, string> = {
@@ -263,6 +291,7 @@ export function createNewElement(type: ComponentType): CanvasElement {
     divider: 'Divider Line',
     toggle: 'Switch Toggle',
     table: 'Data Table',
+    widget3d: '3D UI Widget',
   };
 
   return {
@@ -322,6 +351,10 @@ export function ensureProjectPages(project: Project): Project {
     { id: 'var_cart_total', name: 'cartTotal', type: 'number' as const, defaultValue: 0, currentValue: 199 },
   ];
 
+  const compliance = ensureComplianceConfig(project);
+  const themeTokens = ensureThemeTokens(project);
+  const responsiveStackBelowPx = project.responsiveStackBelowPx ?? 768;
+
   if (project.pages && project.pages.length > 0) {
     const activeExists = project.pages.some((p) => p.id === project.activePageId);
     const homeExists = project.pages.some((p) => p.id === project.homePageId);
@@ -331,6 +364,9 @@ export function ensureProjectPages(project: Project): Project {
       homePageId: homeExists ? project.homePageId : project.pages[0].id,
       collections: defaultCollections,
       variables: defaultVariables,
+      compliance,
+      themeTokens,
+      responsiveStackBelowPx,
     };
   }
 
@@ -352,6 +388,9 @@ export function ensureProjectPages(project: Project): Project {
     homePageId: homePage.id,
     collections: defaultCollections,
     variables: defaultVariables,
+    compliance,
+    themeTokens,
+    responsiveStackBelowPx,
   };
 }
 
@@ -480,8 +519,8 @@ export function createInitialProject(name: string, templateId?: string): Project
             ...createNewElement('toggle'),
             props: {
               label: 'Real-time Webhook Streaming',
-              toggleChecked: true,
-              subtext: 'Stream events directly into your logging pipeline.',
+              toggleChecked: false,
+              subtext: 'Opt-in to stream events into your logging pipeline.',
             },
           },
           {
@@ -723,6 +762,47 @@ export function createInitialProject(name: string, templateId?: string): Project
         },
       },
     ];
+  } else if (templateId === 'linkinbio') {
+    homeElements = [
+      {
+        ...createNewElement('badge'),
+        props: { text: 'Creator & Studio Links', badgeVariant: 'info' },
+      },
+      {
+        ...createNewElement('heading'),
+        props: {
+          text: name || 'Jordan Blake',
+          headingLevel: 'h1',
+          subtext: 'Design Engineer · Building open developer tools and spatial web experiences.',
+        },
+        styles: { textAlign: 'center', width: 'full' },
+      },
+      {
+        ...createNewElement('widget3d'),
+        props: {
+          widget3d: {
+            presetId: 'glass-tilt-card',
+            presetMode: 'css-3d',
+            title: 'Featured Release: Spatial UI Kit',
+            subtitle: 'Interactive WebGL & React starter pack',
+            accentColor: '#38bdf8',
+            heightPx: 230,
+            autoRotate: true,
+            interactiveTilt: true,
+          },
+        },
+      },
+      {
+        ...createNewElement('button'),
+        props: { text: 'Explore Live Portfolio', buttonVariant: 'primary', whenClicked: 'showToast', toastMessage: 'Opening portfolio showcase!' },
+        styles: { width: 'full' },
+      },
+      {
+        ...createNewElement('button'),
+        props: { text: 'Book a 20-Min Intro Call', buttonVariant: 'outline', whenClicked: 'showToast', toastMessage: 'Scheduling calendar selected.' },
+        styles: { width: 'full' },
+      },
+    ];
   } else {
     // Blank template
     homeElements = [
@@ -779,6 +859,9 @@ export function createInitialProject(name: string, templateId?: string): Project
     pages,
     activePageId: homePage.id,
     homePageId: homePage.id,
+    compliance: ensureComplianceConfig(),
+    themeTokens: ensureThemeTokens({ canvasBg: '#0f0f12' }),
+    responsiveStackBelowPx: 768,
     elements: homeElements, // for legacy fallback
   };
 }
@@ -894,12 +977,54 @@ export function switchActivePage(project: Project, pageId: string): Project {
   };
 }
 
+export const PAGE_TRANSITION_PRESETS: {
+  id: PageTransition;
+  label: string;
+  description: string;
+}[] = [
+  { id: 'fade', label: 'Crossfade', description: 'Smooth opacity dissolve between routes' },
+  { id: 'slide-left', label: 'Slide Left', description: 'Enters smoothly from the right edge' },
+  { id: 'slide-right', label: 'Slide Right', description: 'Enters smoothly from the left edge' },
+  { id: 'slide-up', label: 'Slide Up', description: 'Lifts upward smoothly on route change' },
+  { id: 'scale', label: 'Zoom Scale', description: 'Subtle depth zoom entrance' },
+  { id: 'none', label: 'Instant', description: 'No transition animation' },
+];
+
+export function getPageTransitionClass(transition?: PageTransition): string {
+  switch (transition) {
+    case 'slide-left':
+      return 'af-page-transition-slide-left';
+    case 'slide-right':
+      return 'af-page-transition-slide-right';
+    case 'slide-up':
+      return 'af-page-transition-slide-up';
+    case 'scale':
+      return 'af-page-transition-scale';
+    case 'none':
+      return 'af-page-transition-none';
+    case 'fade':
+    default:
+      return 'af-page-transition-fade';
+  }
+}
+
 export function updatePageTransition(project: Project, pageId: string, transition: PageTransition): Project {
   const proj = ensureProjectPages(project);
   return {
     ...proj,
     updatedAt: new Date().toISOString(),
     pages: proj.pages.map((p) => (p.id === pageId ? { ...p, transition } : p)),
+  };
+}
+
+export function updatePageSeo(project: Project, pageId: string, seoPatch: Partial<PageSeoConfig>): Project {
+  const proj = ensureProjectPages(project);
+  return {
+    ...proj,
+    updatedAt: new Date().toISOString(),
+    pages: proj.pages.map((p) =>
+      p.id === pageId ? { ...p, seo: { ...(p.seo || {}), ...seoPatch } } : p
+    ),
   };
 }
 
@@ -1343,44 +1468,112 @@ export function sanitizeUrl(raw: unknown): string {
 
 export function exportProjectToHtml(project: Project): string {
   const proj = ensureProjectPages(project);
+  const comp = ensureComplianceConfig(proj);
 
   const safeProjectName = escapeHtml(proj.name);
+  const safeBizName = escapeHtml(comp.businessName);
+  const safeBizAddr = escapeHtml(comp.businessAddress);
+  const safeSupport = escapeHtml(comp.supportEmail);
+  const safePrivacy = escapeHtml(comp.privacyEmail);
+  const safeUnsubscribe = escapeHtml(comp.unsubscribeEmail);
   const pagesJson = JSON.stringify(proj.pages).replace(/<\//g, '<\\/');
   const homePageId = escapeHtml(proj.homePageId);
+
+  const homePage = proj.pages.find((p) => p.id === proj.homePageId) || proj.pages[0];
+  const initialSeoTitle = escapeHtml(homePage?.seo?.title || `${proj.name} - Built with AppForge`);
+  const initialSeoDesc = escapeHtml(homePage?.seo?.metaDescription || proj.description || `${proj.name} web application`);
+  const initialOgTitle = escapeHtml(homePage?.seo?.ogTitle || homePage?.seo?.title || proj.name);
+  const initialOgDesc = escapeHtml(homePage?.seo?.ogDescription || homePage?.seo?.metaDescription || proj.description || `${proj.name} web application`);
+  const initialOgType = escapeHtml(homePage?.seo?.ogType || 'website');
+  const initialOgImage = homePage?.seo?.ogImage ? `\n  <meta property="og:image" content="${escapeHtml(sanitizeUrl(homePage.seo.ogImage))}">` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${safeProjectName} - Built with AppForge</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>${initialSeoTitle}</title>
+  <meta name="description" content="${initialSeoDesc}">
+  <meta property="og:type" content="${initialOgType}">
+  <meta property="og:title" content="${initialOgTitle}">
+  <meta property="og:description" content="${initialOgDesc}">${initialOgImage}
   <style>
-    .page-fade { animation: fadeIn 0.25s ease-in-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #09090b; color: #f4f4f5; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; }
+    .sr-skip { position: absolute; left: -9999px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+    .sr-skip:focus { position: fixed; left: 16px; top: 16px; width: auto; height: auto; padding: 10px 14px; background: #2563eb; color: #fff; border-radius: 8px; z-index: 100; font-size: 13px; font-weight: 600; text-decoration: none; }
+    :focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+    .container { max-width: 960px; margin: 0 auto; padding: 28px 16px; }
+    .hdr { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 16px; margin-bottom: 24px; border-bottom: 1px solid #27272a; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; padding: 10px 18px; border-radius: 8px; border: 1px solid transparent; font-size: 13px; font-weight: 600; cursor: pointer; background: #2563eb; color: #fff; }
+    .btn:hover { background: #1d4ed8; }
+    .btn-ghost { background: #18181b; color: #e4e4e7; border-color: #3f3f46; }
+    .card { padding: 20px; border-radius: 12px; border: 1px solid #27272a; background: #18181b; margin-bottom: 16px; }
+    .input { width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid #3f3f46; background: #09090b; color: #fff; font-size: 13px; }
+    .muted { color: #a1a1aa; font-size: 13px; }
+    .hidden { display: none !important; }
+    .af-page-transition-fade { animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .af-page-transition-slide-left { animation: slideLeftIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .af-page-transition-slide-right { animation: slideRightIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .af-page-transition-slide-up { animation: slideUpIn 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .af-page-transition-scale { animation: scaleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    .af-page-transition-none { animation: none; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideLeftIn { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes slideRightIn { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes slideUpIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+    .footer-legal { margin-top: 40px; padding-top: 20px; border-top: 1px solid #27272a; font-size: 12px; color: #a1a1aa; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+    .link-btn { background: none; border: none; color: #93c5fd; text-decoration: underline; cursor: pointer; font-size: 12px; padding: 2px 4px; }
   </style>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen py-8 px-4 font-sans">
-  <div class="max-w-4xl mx-auto">
-    <header class="flex items-center justify-between pb-4 mb-6 border-b border-zinc-800">
-      <div class="flex items-center gap-2">
-        <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-        <h1 class="text-sm font-bold tracking-tight text-white">${safeProjectName}</h1>
+<body>
+  <a href="#app-canvas" class="sr-skip">Skip to main content</a>
+  <div class="container">
+    <header class="hdr">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="width:10px;height:10px;border-radius:999px;background:#3b82f6;display:inline-block;"></span>
+        <span style="font-size:15px;font-weight:700;color:#fff;">${safeProjectName}</span>
       </div>
-      <nav id="nav-pills" class="flex items-center gap-1.5"></nav>
+      <nav id="nav-pills" aria-label="Primary Navigation" style="display:flex;flex-wrap:wrap;gap:6px;"></nav>
     </header>
 
-    <main id="app-canvas" class="page-fade space-y-4"></main>
+    <main id="app-canvas" tabindex="-1" class="af-page-transition-fade"></main>
+
+    <footer class="footer-legal" aria-label="Legal & Business Information">
+      <div>
+        <div><strong>${safeBizName}</strong> · ${safeBizAddr}</div>
+        <div>Support: <a href="mailto:${safeSupport}" style="color:#93c5fd;">${safeSupport}</a> · Unsubscribe: <a href="mailto:${safeUnsubscribe}?subject=Unsubscribe" style="color:#93c5fd;">One-click opt-out</a></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <button type="button" class="link-btn" onclick="openLegal('Privacy Policy')">Privacy Policy</button>
+        <button type="button" class="link-btn" onclick="openLegal('Terms of Service')">Terms of Service</button>
+        <button type="button" class="link-btn" onclick="openLegal('Refund Policy')">Refund Policy (${comp.refundWindowDays} days)</button>
+        <button type="button" class="link-btn" onclick="openLegal('Cookie Policy')">Cookie Settings</button>
+        <button type="button" class="link-btn" onclick="openLegal('Data Deletion Request')">Data Deletion</button>
+      </div>
+    </footer>
   </div>
 
-  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2"></div>
+  ${comp.includeCookieBanner ? `
+  <aside id="cookie-banner" role="region" aria-label="Cookie Consent" style="position:fixed;bottom:14px;left:14px;right:14px;max-width:780px;margin:0 auto;padding:12px 16px;background:#18181b;border:1px solid #3f3f46;border-radius:12px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;z-index:40;font-size:12px;">
+    <div style="flex:1;min-width:220px;color:#e4e4e7;">
+      We use essential cookies to operate this app. Optional analytics/marketing cookies stay off unless you choose to accept.
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button type="button" class="btn btn-ghost" onclick="setCookieChoice('rejected')">Reject Non-Essential</button>
+      <button type="button" class="btn" onclick="setCookieChoice('accepted')">Accept All</button>
+    </div>
+  </aside>` : ''}
 
-  <div id="modal-container" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 hidden">
-    <div class="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl">
-      <h3 id="modal-title" class="text-base font-semibold text-white mb-2"></h3>
-      <p id="modal-body" class="text-xs text-zinc-400 mb-6 leading-relaxed"></p>
-      <div class="flex justify-end">
-        <button onclick="closeModal()" class="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-white">Close</button>
+  <div id="toast-container" aria-live="polite" style="position:fixed;bottom:24px;right:24px;z-index:50;display:flex;flex-direction:column;gap:8px;"></div>
+
+  <div id="modal-container" role="dialog" aria-modal="true" class="hidden" style="position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.75);padding:16px;">
+    <div style="width:100%;max-width:520px;background:#18181b;border:1px solid #3f3f46;border-radius:16px;padding:24px;">
+      <h2 id="modal-title" style="font-size:16px;font-weight:700;color:#fff;margin:0 0 8px;"></h2>
+      <div id="modal-body" style="font-size:13px;color:#d4d4d8;margin-bottom:20px;line-height:1.6;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" onclick="closeModal()" class="btn btn-ghost">Close</button>
       </div>
     </div>
   </div>
@@ -1389,16 +1582,33 @@ export function exportProjectToHtml(project: Project): string {
     const pages = ${pagesJson};
     let activePageId = '${homePageId}';
     const formState = {};
+    const requireFormConsent = ${comp.requireFormConsent ? 'true' : 'false'};
 
     function esc(v) {
       return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     }
 
-    function showToast(message, type = 'info') {
+    function setCookieChoice(choice) {
+      try { localStorage.setItem('af_exported_cookie_choice', choice); } catch {}
+      var b = document.getElementById('cookie-banner');
+      if (b) b.classList.add('hidden');
+      showToast(choice === 'accepted' ? 'Cookie preferences saved (All accepted).' : 'Non-essential cookies rejected.', 'success');
+    }
+
+    function openLegal(section) {
+      var body = '';
+      if (section === 'Privacy Policy') body = 'Controller: ${safeBizName} (${safeBizAddr}). We collect only data you explicitly submit, never sell personal information, and enforce minimum age ${comp.minimumAge}+ or verifiable parental consent. Contact: ${safePrivacy}.';
+      else if (section === 'Terms of Service') body = 'Provided by ${safeBizName} (${escapeHtml(comp.registrationId)}). Transparent pricing with zero hidden fees. Contact ${safeSupport} for assistance.';
+      else if (section === 'Refund Policy') body = 'All paid plans include a ${comp.refundWindowDays}-day full refund guarantee with no hidden cancellation fees. Email ${safeSupport} to request a refund.';
+      else if (section === 'Cookie Policy') body = 'Essential cookies keep navigation working. Optional cookies remain disabled unless explicitly enabled.';
+      else body = 'To request permanent deletion of your data or unsubscribe from emails, contact ${safePrivacy} or ${safeUnsubscribe}.';
+      openModal(section, body);
+    }
+
+    function showToast(message, type) {
       const c = document.getElementById('toast-container');
       const t = document.createElement('div');
-      const border = type === 'success' ? 'border-emerald-500/50' : type === 'error' ? 'border-red-500/50' : 'border-blue-500/50';
-      t.className = 'p-3 rounded-xl bg-zinc-900 border ' + border + ' text-white text-xs shadow-xl page-fade';
+      t.style.cssText = 'padding:10px 14px;border-radius:10px;background:#18181b;border:1px solid ' + (type === 'error' ? '#ef4444' : '#3b82f6') + ';color:#fff;font-size:12px;';
       t.innerText = message;
       c.appendChild(t);
       setTimeout(() => t.remove(), 4000);
@@ -1435,10 +1645,10 @@ export function exportProjectToHtml(project: Project): string {
 
     function renderNav() {
       const nav = document.getElementById('nav-pills');
-      nav.innerHTML = pages.map(p => 
-        '<button onclick="navigateToPage(\\'' + esc(p.id) + '\\')" class="px-2.5 py-1 rounded-lg text-xs font-medium ' +
-        (p.id === activePageId ? 'bg-blue-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:text-white') +
-        '">' + esc(p.name) + '</button>'
+      nav.innerHTML = pages.map(p =>
+        '<button type="button" onclick="navigateToPage(\\'' + esc(p.id) + '\\')" class="btn ' +
+        (p.id === activePageId ? '' : 'btn-ghost') +
+        '" style="padding:6px 12px;font-size:12px;">' + esc(p.name) + '</button>'
       ).join('');
     }
 
@@ -1450,46 +1660,46 @@ export function exportProjectToHtml(project: Project): string {
         const childHtml = el.children && el.children.length ? renderElements(el.children) : '';
         switch (el.type) {
           case 'navbar':
-            return '<nav class="w-full px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900/90 flex items-center justify-between gap-4 mb-4">' +
-              '<span class="font-bold text-sm text-white">' + esc(p.brandName || 'AppForge') + '</span>' +
-              '<div class="flex items-center gap-3">' +
-              (p.navLinks || []).map(l => '<button onclick="' + (l.targetPageId ? 'navigateToPage(\\'' + esc(l.targetPageId) + '\\')' : '') + '" class="text-xs text-zinc-300 hover:text-white">' + esc(l.label) + '</button>').join('') +
-              '</div>' +
-              (p.ctaLabel ? '<button onclick="handleButtonClick(\\'' + esc(el.id) + '\\')" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold">' + esc(p.ctaLabel) + '</button>' : '') +
-              '</nav>';
+            return '<nav class="card" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;">' +
+              '<span style="font-weight:700;font-size:14px;color:#fff;">' + esc(p.brandName || 'AppForge') + '</span>' +
+              '<div style="display:flex;gap:10px;align-items:center;">' +
+              (p.navLinks || []).map(l => '<button type="button" class="btn btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="' + (l.targetPageId ? 'navigateToPage(\\'' + esc(l.targetPageId) + '\\')' : '') + '">' + esc(l.label) + '</button>').join('') +
+              (p.ctaLabel ? '<button type="button" onclick="handleButtonClick(\\'' + esc(el.id) + '\\')" class="btn" style="padding:6px 12px;font-size:12px;">' + esc(p.ctaLabel) + '</button>' : '') +
+              '</div></nav>';
           case 'container':
-          case 'card': {
-            const isRow = p.direction === 'row';
-            return '<div style="background-color:' + esc(s.backgroundColor || (el.type === 'card' ? '#18181b' : '#121215')) + ';" class="p-5 rounded-xl border border-zinc-800 mb-4 flex ' + (isRow ? 'flex-row flex-wrap items-center gap-4' : 'flex-col gap-3') + '">' +
-              (p.text ? '<div class="w-full"><h4 class="text-base font-semibold text-white mb-1">' + esc(p.text) + '</h4>' + (p.subtext ? '<p class="text-xs text-zinc-400">' + esc(p.subtext) + '</p>' : '') + '</div>' : '') +
+          case 'card':
+            return '<div class="card" style="background:' + esc(s.backgroundColor || (el.type === 'card' ? '#18181b' : '#121215')) + ';">' +
+              (p.text ? '<h3 style="margin:0 0 6px;font-size:16px;color:#fff;">' + esc(p.text) + '</h3>' : '') +
+              (p.subtext ? '<p class="muted" style="margin:0 0 12px;">' + esc(p.subtext) + '</p>' : '') +
               childHtml + '</div>';
-          }
           case 'heading': {
             const tag = p.headingLevel === 'h2' ? 'h2' : p.headingLevel === 'h3' ? 'h3' : 'h1';
-            return '<div class="mb-3"><' + tag + ' class="text-3xl font-bold text-white tracking-tight">' + esc(p.text || '') + '</' + tag + '>' +
-              (p.subtext ? '<p class="text-zinc-400 mt-1 text-sm">' + esc(p.subtext) + '</p>' : '') + '</div>';
+            return '<div style="margin-bottom:12px;"><' + tag + ' style="margin:0;color:#fff;">' + esc(p.text || '') + '</' + tag + '>' +
+              (p.subtext ? '<p class="muted" style="margin:4px 0 0;">' + esc(p.subtext) + '</p>' : '') + '</div>';
           }
           case 'text':
-            return '<p class="text-zinc-300 text-sm mb-3 leading-relaxed">' + esc(p.text || '') + '</p>';
+            return '<p style="color:#d4d4d8;font-size:14px;margin:0 0 12px;">' + esc(p.text || '') + '</p>';
           case 'badge':
-            return '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-2">' + esc(p.text || 'Badge') + '</span>';
+            return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;background:#1e3a8a;color:#bfdbfe;margin-bottom:8px;">' + esc(p.text || 'Badge') + '</span>';
           case 'button':
-            return '<button onclick="handleButtonClick(\\'' + esc(el.id) + '\\')" style="background-color:' + esc(s.backgroundColor || '#3b82f6') + ';" class="px-5 py-2.5 rounded-lg text-sm font-semibold text-white shadow-md hover:opacity-90 inline-block mb-3 transition cursor-pointer">' + esc(p.text || 'Button') + '</button>';
+            return '<button type="button" onclick="handleButtonClick(\\'' + esc(el.id) + '\\')" class="btn" style="margin-bottom:12px;">' + esc(p.text || 'Button') + '</button>';
           case 'input':
-            return '<div class="w-full mb-3">' + (p.label ? '<label class="block text-xs font-semibold uppercase text-zinc-300 mb-1">' + esc(p.label) + '</label>' : '') + '<input oninput="formState[\\'' + esc(el.id) + '\\']=this.value" placeholder="' + esc(p.placeholder || '') + '" class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white" /></div>';
+            return '<label style="display:block;margin-bottom:12px;">' + (p.label ? '<span style="display:block;font-size:12px;font-weight:600;color:#e4e4e7;margin-bottom:4px;">' + esc(p.label) + '</span>' : '') + '<input class="input" oninput="formState[\\'' + esc(el.id) + '\\']=this.value" placeholder="' + esc(p.placeholder || '') + '" /></label>';
           case 'textarea':
-            return '<div class="w-full mb-3">' + (p.label ? '<label class="block text-xs font-semibold uppercase text-zinc-300 mb-1">' + esc(p.label) + '</label>' : '') + '<textarea rows="3" oninput="formState[\\'' + esc(el.id) + '\\']=this.value" placeholder="' + esc(p.placeholder || '') + '" class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-white"></textarea></div>';
+            return '<label style="display:block;margin-bottom:12px;">' + (p.label ? '<span style="display:block;font-size:12px;font-weight:600;color:#e4e4e7;margin-bottom:4px;">' + esc(p.label) + '</span>' : '') + '<textarea class="input" rows="3" oninput="formState[\\'' + esc(el.id) + '\\']=this.value" placeholder="' + esc(p.placeholder || '') + '"></textarea></label>';
+          case 'toggle':
+            return '<label class="card" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;"><span style="font-size:13px;color:#fff;">' + esc(p.label || 'Toggle') + '</span><input type="checkbox" ' + (p.toggleChecked ? 'checked' : '') + ' /></label>';
           case 'image':
-            return '<div class="w-full overflow-hidden rounded-xl border border-zinc-800 mb-3"><img src="' + esc(p.imageUrl || '') + '" alt="' + esc(p.imageAlt || 'Media') + '" class="w-full h-48 object-cover" /></div>';
+            return '<div style="margin-bottom:12px;border-radius:12px;overflow:hidden;border:1px solid #27272a;"><img src="' + esc(p.imageUrl || '') + '" alt="' + esc(p.imageAlt || 'Illustration') + '" style="width:100%;height:200px;object-fit:cover;display:block;" /></div>';
           case 'metric':
-            return '<div class="p-5 rounded-xl border border-zinc-800 bg-zinc-900 mb-3 shadow"><span class="text-xs text-zinc-400 uppercase">' + esc(p.metricLabel || 'KPI') + '</span><div class="text-2xl font-bold text-white mt-1">' + esc(p.metricValue || '0') + '</div></div>';
+            return '<div class="card"><span class="muted" style="text-transform:uppercase;font-size:11px;">' + esc(p.metricLabel || 'KPI') + '</span><div style="font-size:24px;font-weight:700;color:#fff;margin-top:4px;">' + esc(p.metricValue || '0') + '</div></div>';
           case 'divider':
-            return '<hr class="border-zinc-800 my-4" />';
+            return '<hr style="border:0;border-top:1px solid #27272a;margin:16px 0;" />';
           case 'table':
-            return '<div class="border border-zinc-800 rounded-xl overflow-hidden mb-4"><table class="w-full text-left text-xs text-zinc-300"><thead class="bg-zinc-800 text-zinc-400 uppercase"><tr>' +
-              (p.tableHeaders || []).map(h => '<th class="px-3.5 py-2">' + esc(h) + '</th>').join('') +
+            return '<div class="card" style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;"><thead><tr>' +
+              (p.tableHeaders || []).map(h => '<th style="padding:8px;border-bottom:1px solid #27272a;color:#a1a1aa;">' + esc(h) + '</th>').join('') +
               '</tr></thead><tbody>' +
-              (p.tableRows || []).map(r => '<tr class="border-t border-zinc-800">' + r.map(c => '<td class="px-3.5 py-2">' + esc(c) + '</td>').join('') + '</tr>').join('') +
+              (p.tableRows || []).map(r => '<tr>' + r.map(c => '<td style="padding:8px;border-bottom:1px solid #27272a;color:#e4e4e7;">' + esc(c) + '</td>').join('') + '</tr>').join('') +
               '</tbody></table></div>';
           default:
             return '';
@@ -1502,6 +1712,13 @@ export function exportProjectToHtml(project: Project): string {
       const el = findDeep(page.elements, elementId);
       if (!el) return;
       const p = el.props || {};
+      if (p.whenClicked === 'submitForm' && requireFormConsent) {
+        var box = document.getElementById('af-form-consent');
+        if (box && !box.checked) {
+          showToast('Please confirm Privacy Policy & age (${comp.minimumAge}+) consent before submitting.', 'error');
+          return;
+        }
+      }
       if (p.whenClicked === 'openPage' && p.targetPageId) { navigateToPage(p.targetPageId); return; }
       if (p.whenClicked === 'showToast') { showToast(p.toastMessage || 'Action executed!', 'success'); return; }
       if (p.whenClicked === 'showPopup') { openModal(p.popupTitle, p.popupContent); return; }
@@ -1521,7 +1738,17 @@ export function exportProjectToHtml(project: Project): string {
     function renderApp() {
       const page = pages.find(p => p.id === activePageId) || pages[0];
       renderNav();
-      document.getElementById('app-canvas').innerHTML = renderElements(page.elements);
+      const seo = page.seo || {};
+      if (seo.title) document.title = seo.title;
+      const canvas = document.getElementById('app-canvas');
+      const transitionName = page.transition || 'fade';
+      canvas.className = 'af-page-transition-' + transitionName;
+      void canvas.offsetWidth;
+      const hasInputs = (page.elements || []).some(e => e.type === 'input' || e.type === 'textarea');
+      const consentBlock = (hasInputs && requireFormConsent)
+        ? '<label class="card" style="display:flex;align-items:flex-start;gap:10px;font-size:12px;color:#d4d4d8;cursor:pointer;"><input id="af-form-consent" type="checkbox" style="margin-top:3px;" /><span>I confirm I am at least ${comp.minimumAge} years old (or have verifiable guardian consent) and agree to the Privacy Policy.</span></label>'
+        : '';
+      canvas.innerHTML = renderElements(page.elements) + consentBlock;
     }
 
     renderApp();

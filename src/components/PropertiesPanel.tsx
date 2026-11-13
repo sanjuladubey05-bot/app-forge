@@ -11,7 +11,13 @@ import {
   MotionEasing,
   MotionCategory,
   MotionPresetView,
-  NavLinkItem
+  NavLinkItem,
+  PageSeoConfig,
+  PageTransition,
+  ThemePresetName,
+  ThemeTokens,
+  Widget3DConfig,
+  Widget3DPresetId
 } from '../types/editor';
 import { 
   Sliders, 
@@ -49,20 +55,36 @@ import {
   Keyboard,
   Wand2,
   Database,
-  Loader2
+  Loader2,
+  Globe,
+  Search,
+  Box,
+  Share2
 } from 'lucide-react';
-import { createDefaultActionStep, getActivePage } from '../utils/project-engine';
+import { createDefaultActionStep, getActivePage, PAGE_TRANSITION_PRESETS } from '../utils/project-engine';
+import { computeContrastRatio, meetsWcagAA } from '../utils/compliance-audit';
+import { THEME_PRESETS, ensureThemeTokens } from '../utils/theme-engine';
+import { BUILTIN_3D_PRESETS } from '../utils/three-presets';
 
 interface PropertiesPanelProps {
   selectedElement: CanvasElement | null;
   project: Project;
   onUpdateElement: (id: string, updates: Partial<CanvasElement>) => void;
-  onUpdateProjectSettings: (settings: { canvasBg?: string; canvasPadding?: Project['canvasPadding'] }) => void;
+  onUpdateProjectSettings: (settings: {
+    canvasBg?: string;
+    canvasPadding?: Project['canvasPadding'];
+    responsiveStackBelowPx?: number;
+  }) => void;
   onDeleteElement: (id: string) => void;
   onDuplicateElement: (id: string) => void;
   onToggleVisibility: (id: string) => void;
   onToggleLock: (id: string) => void;
   onOpenShortcutsModal?: () => void;
+  onApplyThemePreset?: (preset: Exclude<ThemePresetName, 'custom'>) => void;
+  onUpdateThemeTokens?: (patch: Partial<ThemeTokens>) => void;
+  onUpdatePageSeo?: (pageId: string, seo: Partial<PageSeoConfig>) => void;
+  onUpdatePageTransition?: (pageId: string, transition: PageTransition) => void;
+  onOpenAi3DModal?: () => void;
 }
 
 export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
@@ -75,18 +97,227 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   onToggleVisibility,
   onToggleLock,
   onOpenShortcutsModal,
+  onApplyThemePreset,
+  onUpdateThemeTokens,
+  onUpdatePageSeo,
+  onUpdatePageTransition,
+  onOpenAi3DModal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'props' | 'design' | 'motion' | 'interactions'>('props');
+  const [activeTab, setActiveTab] = useState<'props' | 'design' | 'motion' | 'interactions' | 'seo'>('props');
+  const [canvasTab, setCanvasTab] = useState<'canvas' | 'seo'>('canvas');
+  const [seoPageId, setSeoPageId] = useState<string>('');
   const [activeTrigger, setActiveTrigger] = useState<'onClick' | 'onHover' | 'onChange'>('onClick');
   const [isTestingMotion, setIsTestingMotion] = useState(false);
   const [presetCategory, setPresetCategory] = useState<MotionPresetView>('pairs');
   const [aiInstruction, setAiInstruction] = useState('');
   const [isAiEditing, setIsAiEditing] = useState(false);
+  const [isRewritingTone, setIsRewritingTone] = useState<'punchy' | 'professional' | 'friendly' | null>(null);
   const [aiStatusMsg, setAiStatusMsg] = useState<string | null>(null);
   const [isWiringData, setIsWiringData] = useState(false);
   const [wiringFeedback, setWiringFeedback] = useState<string | null>(null);
 
   const activePage = getActivePage(project);
+  const themeTokens = ensureThemeTokens(project);
+  const targetSeoPage = project.pages.find((p) => p.id === seoPageId) || activePage;
+
+  const renderSeoEditor = () => {
+    const seo = targetSeoPage.seo || {};
+    const effectiveTitle = seo.title || `${targetSeoPage.name} | ${project.name}`;
+    const effectiveDesc = seo.metaDescription || project.description || 'Built with AppForge visual application builder.';
+    const effectiveOgTitle = seo.ogTitle || effectiveTitle;
+    const effectiveOgDesc = seo.ogDescription || effectiveDesc;
+
+    const patchSeo = (patch: Partial<PageSeoConfig>) => {
+      onUpdatePageSeo?.(targetSeoPage.id, patch);
+    };
+
+    return (
+      <div className="space-y-4" data-testid="properties-seo-panel">
+        <div>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-300 mb-1.5">
+            Target Page
+          </label>
+          <select
+            aria-label="SEO Target Page"
+            value={targetSeoPage.id}
+            onChange={(e) => setSeoPageId(e.target.value)}
+            data-testid="seo-page-selector"
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+          >
+            {project.pages.map((pg) => (
+              <option key={pg.id} value={pg.id}>
+                {pg.name} ({pg.path})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-3 p-3 rounded-xl bg-zinc-900/50 border border-zinc-800">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-blue-400">
+            <Search size={12} />
+            <span>Search Engine Meta</span>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="seo-meta-title" className="text-[10px] font-semibold uppercase text-zinc-400">
+                Meta Title
+              </label>
+              <span className={`text-[10px] font-mono ${(seo.title || '').length > 60 ? 'text-amber-400' : 'text-zinc-500'}`}>
+                {(seo.title || '').length}/60
+              </span>
+            </div>
+            <input
+              id="seo-meta-title"
+              type="text"
+              value={seo.title || ''}
+              onChange={(e) => patchSeo({ title: e.target.value })}
+              placeholder={`${targetSeoPage.name} | ${project.name}`}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="seo-meta-desc" className="text-[10px] font-semibold uppercase text-zinc-400">
+                Meta Description
+              </label>
+              <span className={`text-[10px] font-mono ${(seo.metaDescription || '').length > 160 ? 'text-amber-400' : 'text-zinc-500'}`}>
+                {(seo.metaDescription || '').length}/160
+              </span>
+            </div>
+            <textarea
+              id="seo-meta-desc"
+              rows={3}
+              value={seo.metaDescription || ''}
+              onChange={(e) => patchSeo({ metaDescription: e.target.value })}
+              placeholder="Concise summary for search engines..."
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="seo-canonical-url" className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+              Canonical URL
+            </label>
+            <input
+              id="seo-canonical-url"
+              type="url"
+              value={seo.canonicalUrl || ''}
+              onChange={(e) => patchSeo({ canonicalUrl: e.target.value })}
+              placeholder={`https://example.com${targetSeoPage.path}`}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="seo-favicon-url" className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+              Favicon URL
+            </label>
+            <input
+              id="seo-favicon-url"
+              type="text"
+              value={seo.faviconUrl || ''}
+              onChange={(e) => patchSeo({ faviconUrl: e.target.value })}
+              placeholder="https://example.com/favicon.ico"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3 p-3 rounded-xl bg-zinc-900/50 border border-zinc-800">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
+            <Share2 size={12} />
+            <span>Open Graph (Social Share)</span>
+          </div>
+
+          <div>
+            <label htmlFor="seo-og-title" className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+              OG Title
+            </label>
+            <input
+              id="seo-og-title"
+              type="text"
+              value={seo.ogTitle || ''}
+              onChange={(e) => patchSeo({ ogTitle: e.target.value })}
+              placeholder={effectiveTitle}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="seo-og-desc" className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+              OG Description
+            </label>
+            <textarea
+              id="seo-og-desc"
+              rows={2}
+              value={seo.ogDescription || ''}
+              onChange={(e) => patchSeo({ ogDescription: e.target.value })}
+              placeholder={effectiveDesc}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="seo-og-image" className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+              OG Image URL (1200×630)
+            </label>
+            <input
+              id="seo-og-image"
+              type="text"
+              value={seo.ogImage || ''}
+              onChange={(e) => patchSeo({ ogImage: e.target.value })}
+              placeholder="https://example.com/og-cover.png"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="seo-og-type" className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+              OG Type
+            </label>
+            <select
+              id="seo-og-type"
+              value={seo.ogType || 'website'}
+              onChange={(e) => patchSeo({ ogType: e.target.value as PageSeoConfig['ogType'] })}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+            >
+              <option value="website">website</option>
+              <option value="article">article</option>
+              <option value="product">product</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Live Search & Social Card Preview */}
+        <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-950 space-y-2" data-testid="seo-preview-card">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+            <Globe size={11} className="text-blue-400" />
+            <span>Live Social & Search Preview</span>
+          </div>
+          {seo.ogImage && (
+            <div className="h-24 w-full rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900">
+              <img
+                src={seo.ogImage}
+                alt="Open Graph social share preview"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
+          <div className="text-[10px] font-mono text-emerald-400 truncate">
+            {seo.canonicalUrl || `https://appforge.app${targetSeoPage.path}`}
+          </div>
+          <div className="text-xs font-semibold text-blue-400 leading-snug line-clamp-2">
+            {effectiveOgTitle}
+          </div>
+          <div className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
+            {effectiveOgDesc}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const colorPresets = [
     '#ffffff',
@@ -103,150 +334,297 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   ];
 
   if (!selectedElement) {
-    // Canvas / Root Frame Properties
+    // Canvas / Root Frame Properties + Page Transitions + Global Theme + SEO Tab
     return (
       <aside className="w-80 border-l border-zinc-800 bg-zinc-950 flex flex-col h-full shrink-0 select-none">
         <div className="p-3 border-b border-zinc-800 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
             <LayoutTemplate size={13} className="text-blue-400" />
-            Canvas Properties
+            Page & Theme
           </span>
-          <span className="text-[10px] font-mono text-zinc-400">{activePage.name} Frame</span>
+          <span className="text-[10px] font-mono text-zinc-400">{activePage.name}</span>
+        </div>
+
+        <div className="grid grid-cols-2 border-b border-zinc-800 text-[11px] font-medium text-zinc-400 bg-zinc-950">
+          <button
+            type="button"
+            onClick={() => setCanvasTab('canvas')}
+            className={`py-2 flex items-center justify-center gap-1.5 transition cursor-pointer border-b-2 ${
+              canvasTab === 'canvas'
+                ? 'border-blue-500 text-blue-400 bg-zinc-900/50 font-semibold'
+                : 'border-transparent hover:text-zinc-200'
+            }`}
+          >
+            <Palette size={12} />
+            <span>Page & Theme</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCanvasTab('seo')}
+            data-testid="properties-tab-seo"
+            className={`py-2 flex items-center justify-center gap-1.5 transition cursor-pointer border-b-2 ${
+              canvasTab === 'seo'
+                ? 'border-blue-500 text-blue-400 bg-zinc-900/50 font-semibold'
+                : 'border-transparent hover:text-zinc-200'
+            }`}
+          >
+            <Globe size={12} />
+            <span>SEO</span>
+          </button>
         </div>
 
         <div className="p-4 space-y-5 flex-1 overflow-y-auto">
-          {/* Active Screen Background */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-2">
-              Screen Background
-            </label>
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                type="color"
-                value={project.canvasBg}
-                onChange={(e) => onUpdateProjectSettings({ canvasBg: e.target.value })}
-                className="w-8 h-8 rounded border border-zinc-800 bg-transparent cursor-pointer p-0.5"
-              />
-              <input
-                type="text"
-                value={project.canvasBg}
-                onChange={(e) => onUpdateProjectSettings({ canvasBg: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-zinc-200 font-mono"
-              />
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {['#09090b', '#0f0f12', '#18181b', '#0f172a', '#022c22', '#1e1b4b'].map((bg) => (
-                <button
-                  key={bg}
-                  type="button"
-                  onClick={() => onUpdateProjectSettings({ canvasBg: bg })}
-                  style={{ backgroundColor: bg }}
-                  className={`w-6 h-6 rounded-md border transition cursor-pointer ${
-                    project.canvasBg === bg ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-zinc-800'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
+          {canvasTab === 'seo' ? (
+            renderSeoEditor()
+          ) : (
+            <>
+              {/* Active Screen Transition Animation */}
+              <div className="space-y-2" data-testid="page-transition-settings">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                    <Film size={12} className="text-blue-400" />
+                    <span>Page Transition</span>
+                  </label>
+                  <span className="text-[10px] font-mono text-zinc-400">{activePage.name}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {PAGE_TRANSITION_PRESETS.map((preset) => {
+                    const isSelected = (activePage.transition || 'fade') === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => onUpdatePageTransition?.(activePage.id, preset.id)}
+                        data-testid={`page-transition-${preset.id}`}
+                        className={`p-2 rounded-lg border text-left transition cursor-pointer ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-500/15 text-blue-300 font-semibold'
+                            : 'border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:text-white'
+                        }`}
+                        title={preset.description}
+                      >
+                        <div className="text-[11px]">{preset.label}</div>
+                        <div className="text-[9px] text-zinc-500 truncate">{preset.id}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* Padding */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-2">
-              Canvas Inner Padding
-            </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {(['sm', 'md', 'lg', 'xl'] as const).map((pad) => (
+              {/* Global Design Theme Presets */}
+              <div className="pt-4 border-t border-zinc-800 space-y-2.5" data-testid="global-theme-presets">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  Design System Theme
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(Object.keys(THEME_PRESETS) as Exclude<ThemePresetName, 'custom'>[]).map((presetKey) => {
+                    const preset = THEME_PRESETS[presetKey];
+                    const isActive = themeTokens.presetName === presetKey;
+                    return (
+                      <button
+                        key={presetKey}
+                        type="button"
+                        onClick={() => onApplyThemePreset?.(presetKey)}
+                        className={`p-2 rounded-lg border text-left transition cursor-pointer flex items-center gap-2 ${
+                          isActive
+                            ? 'border-blue-500 bg-blue-500/15 text-white font-semibold'
+                            : 'border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full border border-white/20 shrink-0"
+                          style={{ background: `linear-gradient(135deg, ${preset.primaryColor}, ${preset.backgroundColor})` }}
+                        />
+                        <span className="text-[11px] capitalize truncate">{presetKey.replace('-', ' ')}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                      Primary Accent
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="color"
+                        value={themeTokens.primaryColor}
+                        onChange={(e) => onUpdateThemeTokens?.({ primaryColor: e.target.value })}
+                        aria-label="Primary accent color"
+                        className="w-7 h-7 rounded border border-zinc-800 bg-transparent cursor-pointer p-0.5"
+                      />
+                      <span className="text-[10px] font-mono text-zinc-400">{themeTokens.primaryColor}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                      Global Radius
+                    </label>
+                    <select
+                      aria-label="Global border radius"
+                      value={themeTokens.borderRadius}
+                      onChange={(e) => onUpdateThemeTokens?.({ borderRadius: e.target.value as ThemeTokens['borderRadius'] })}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-white"
+                    >
+                      <option value="4px">Sharp (4px)</option>
+                      <option value="8px">Subtle (8px)</option>
+                      <option value="12px">Rounded (12px)</option>
+                      <option value="16px">Soft (16px)</option>
+                      <option value="24px">Extra (24px)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Screen Background */}
+              <div className="pt-4 border-t border-zinc-800">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-2">
+                  Screen Background
+                </label>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="color"
+                    value={project.canvasBg}
+                    onChange={(e) => onUpdateProjectSettings({ canvasBg: e.target.value })}
+                    className="w-8 h-8 rounded border border-zinc-800 bg-transparent cursor-pointer p-0.5"
+                  />
+                  <input
+                    type="text"
+                    value={project.canvasBg}
+                    onChange={(e) => onUpdateProjectSettings({ canvasBg: e.target.value })}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-zinc-200 font-mono"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {['#09090b', '#0f0f12', '#18181b', '#0f172a', '#022c22', '#1e1b4b', '#f8fafc'].map((bg) => (
+                    <button
+                      key={bg}
+                      type="button"
+                      onClick={() => onUpdateProjectSettings({ canvasBg: bg })}
+                      style={{ backgroundColor: bg }}
+                      className={`w-6 h-6 rounded-md border transition cursor-pointer ${
+                        project.canvasBg === bg ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-zinc-800'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Padding & Responsive Breakpoint */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-2">
+                    Canvas Inner Padding
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {(['sm', 'md', 'lg', 'xl'] as const).map((pad) => (
+                      <button
+                        key={pad}
+                        type="button"
+                        onClick={() => onUpdateProjectSettings({ canvasPadding: pad })}
+                        className={`py-1.5 rounded-lg border text-xs font-mono transition cursor-pointer uppercase ${
+                          project.canvasPadding === pad
+                            ? 'border-blue-500 bg-blue-500/10 text-blue-400 font-bold'
+                            : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {pad}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1">
+                    Mobile Stack Breakpoint (px)
+                  </label>
+                  <select
+                    aria-label="Responsive stack breakpoint"
+                    value={String(project.responsiveStackBelowPx ?? 768)}
+                    onChange={(e) => onUpdateProjectSettings({ responsiveStackBelowPx: Number(e.target.value) })}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                  >
+                    <option value="768">768px (Tablet & Mobile)</option>
+                    <option value="640">640px (Mobile Only)</option>
+                    <option value="900">900px (Early Stack)</option>
+                    <option value="0">Disabled (Fixed Rows)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Project Stats */}
+              <div className="pt-4 border-t border-zinc-800 space-y-2 text-xs text-zinc-400">
+                <div className="flex justify-between">
+                  <span>Active Screen</span>
+                  <span className="font-mono text-white">{activePage.name} ({activePage.path})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Screens</span>
+                  <span className="font-mono text-white">{project.pages.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Elements on Page</span>
+                  <span className="font-mono text-white">{activePage.elements.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Target Viewport</span>
+                  <span className="font-mono text-white capitalize">{project.viewport}</span>
+                </div>
+              </div>
+
+              {/* Keyboard Shortcuts & Hotkeys Configuration */}
+              <div className="pt-4 border-t border-zinc-800 space-y-3" data-testid="settings-keyboard-shortcuts">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                    <Keyboard size={13} className="text-blue-400" />
+                    <span>Hotkeys & Shortcuts</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-500">Settings</span>
+                </div>
+
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Define custom key combinations for common operations like deleting elements, previewing, and saving.
+                </p>
+
+                <div className="divide-y divide-zinc-850 rounded-xl border border-zinc-800 bg-zinc-900/40 text-xs">
+                  <div className="p-2 flex items-center justify-between">
+                    <span className="text-zinc-300">Delete Element</span>
+                    <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                      {project.customShortcuts?.deleteElement || 'Delete'}
+                    </kbd>
+                  </div>
+                  <div className="p-2 flex items-center justify-between">
+                    <span className="text-zinc-300">Preview Application</span>
+                    <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                      {project.customShortcuts?.previewApp || 'Ctrl+P'}
+                    </kbd>
+                  </div>
+                  <div className="p-2 flex items-center justify-between">
+                    <span className="text-zinc-300">Save Project</span>
+                    <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                      {project.customShortcuts?.saveProject || 'Ctrl+S'}
+                    </kbd>
+                  </div>
+                  <div className="p-2 flex items-center justify-between">
+                    <span className="text-zinc-300">Quick Add Menu</span>
+                    <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                      {project.customShortcuts?.quickAdd || 'Ctrl+A'}
+                    </kbd>
+                  </div>
+                </div>
+
                 <button
-                  key={pad}
                   type="button"
-                  onClick={() => onUpdateProjectSettings({ canvasPadding: pad })}
-                  className={`py-1.5 rounded-lg border text-xs font-mono transition cursor-pointer uppercase ${
-                    project.canvasPadding === pad
-                      ? 'border-blue-500 bg-blue-500/10 text-blue-400 font-bold'
-                      : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white'
-                  }`}
+                  onClick={onOpenShortcutsModal}
+                  className="w-full py-2 px-3 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-medium flex items-center justify-center gap-2 transition cursor-pointer shadow-xs active:scale-[0.98]"
+                  data-testid="open-shortcuts-settings-btn"
                 >
-                  {pad}
+                  <Keyboard size={13} className="text-blue-400" />
+                  <span>Configure Custom Hotkeys</span>
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Project Stats */}
-          <div className="pt-4 border-t border-zinc-800 space-y-2 text-xs text-zinc-400">
-            <div className="flex justify-between">
-              <span>Active Screen</span>
-              <span className="font-mono text-white">{activePage.name} ({activePage.path})</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Total Screens</span>
-              <span className="font-mono text-white">{project.pages.length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Elements on Page</span>
-              <span className="font-mono text-white">{activePage.elements.length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Target Viewport</span>
-              <span className="font-mono text-white capitalize">{project.viewport}</span>
-            </div>
-          </div>
-
-          {/* Keyboard Shortcuts & Hotkeys Configuration */}
-          <div className="pt-4 border-t border-zinc-800 space-y-3" data-testid="settings-keyboard-shortcuts">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-300">
-                <Keyboard size={13} className="text-blue-400" />
-                <span>Hotkeys & Shortcuts</span>
               </div>
-              <span className="text-[10px] font-mono text-zinc-500">Settings</span>
-            </div>
-
-            <p className="text-[11px] text-zinc-400 leading-relaxed">
-              Define custom key combinations for common operations like deleting elements, previewing, and saving.
-            </p>
-
-            <div className="divide-y divide-zinc-850 rounded-xl border border-zinc-800 bg-zinc-900/40 text-xs">
-              <div className="p-2 flex items-center justify-between">
-                <span className="text-zinc-300">Delete Element</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
-                  {project.customShortcuts?.deleteElement || 'Delete'}
-                </kbd>
-              </div>
-              <div className="p-2 flex items-center justify-between">
-                <span className="text-zinc-300">Preview Application</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
-                  {project.customShortcuts?.previewApp || 'Ctrl+P'}
-                </kbd>
-              </div>
-              <div className="p-2 flex items-center justify-between">
-                <span className="text-zinc-300">Save Project</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
-                  {project.customShortcuts?.saveProject || 'Ctrl+S'}
-                </kbd>
-              </div>
-              <div className="p-2 flex items-center justify-between">
-                <span className="text-zinc-300">Quick Add Menu</span>
-                <kbd className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] font-mono text-zinc-300">
-                  {project.customShortcuts?.quickAdd || 'Ctrl+A'}
-                </kbd>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onOpenShortcutsModal}
-              className="w-full py-2 px-3 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white text-xs font-medium flex items-center justify-center gap-2 transition cursor-pointer shadow-xs active:scale-[0.98]"
-              data-testid="open-shortcuts-settings-btn"
-            >
-              <Keyboard size={13} className="text-blue-400" />
-              <span>Configure Custom Hotkeys</span>
-            </button>
-          </div>
-
-          <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/10 text-[11px] text-zinc-400 leading-relaxed">
-            💡 Select any component on the canvas to configure its content, complete design control styles, and interactive button actions.
-          </div>
+            </>
+          )}
         </div>
       </aside>
     );
@@ -360,6 +738,45 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       if (!instructionOverride) setAiInstruction('');
     } finally {
       setIsAiEditing(false);
+    }
+  };
+
+  const handleRewriteCopyTone = async (tone: 'punchy' | 'professional' | 'friendly') => {
+    const sourceText = (props.text || props.subtext || props.label || '').trim();
+    if (!sourceText) return;
+    setIsRewritingTone(tone);
+    setAiStatusMsg(null);
+    const localPolished = () => {
+      const base = sourceText.replace(/[.!]+$/, '');
+      if (tone === 'punchy') return `${base} — Built for Speed`;
+      if (tone === 'friendly') return `${base} — Ready Whenever You Are`;
+      return `${base}. Engineered for Production Reliability.`;
+    };
+    try {
+      const resp = await fetch('/api/ai/rewrite-copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: sourceText, tone }),
+      });
+      const data = await resp.json().catch(() => null);
+      const nextText = resp.ok && data?.ok && data.rewritten ? String(data.rewritten) : localPolished();
+      if (props.text !== undefined) {
+        handlePropsChange({ text: nextText });
+      } else if (props.subtext !== undefined) {
+        handlePropsChange({ subtext: nextText });
+      } else {
+        handlePropsChange({ label: nextText });
+      }
+      setAiStatusMsg(
+        resp.ok && data?.ok ? `Rewritten in ${tone} tone via Gemini.` : `Polished in ${tone} tone.`
+      );
+    } catch {
+      const fallbackText = localPolished();
+      if (props.text !== undefined) handlePropsChange({ text: fallbackText });
+      else handlePropsChange({ subtext: fallbackText });
+      setAiStatusMsg(`Polished in ${tone} tone.`);
+    } finally {
+      setIsRewritingTone(null);
     }
   };
 
@@ -520,8 +937,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-4 border-b border-zinc-800 text-[11px] font-medium text-zinc-400 bg-zinc-950">
+      <div className="grid grid-cols-5 border-b border-zinc-800 text-[10px] font-medium text-zinc-400 bg-zinc-950">
         <button
+          type="button"
           onClick={() => setActiveTab('props')}
           className={`py-2 flex items-center justify-center gap-1 transition cursor-pointer border-b-2 ${
             activeTab === 'props'
@@ -533,6 +951,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <span>Props</span>
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('design')}
           className={`py-2 flex items-center justify-center gap-1 transition cursor-pointer border-b-2 ${
             activeTab === 'design'
@@ -544,6 +963,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <span>Design</span>
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('motion')}
           className={`py-2 flex items-center justify-center gap-1 transition cursor-pointer border-b-2 ${
             activeTab === 'motion'
@@ -555,6 +975,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <span>Motion</span>
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('interactions')}
           className={`py-2 flex items-center justify-center gap-1 transition cursor-pointer border-b-2 ${
             activeTab === 'interactions'
@@ -564,6 +985,19 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         >
           <Zap size={11} />
           <span>Actions</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('seo')}
+          data-testid="properties-tab-seo"
+          className={`py-2 flex items-center justify-center gap-1 transition cursor-pointer border-b-2 ${
+            activeTab === 'seo'
+              ? 'border-blue-500 text-blue-400 bg-zinc-900/50 font-semibold'
+              : 'border-transparent hover:text-zinc-200'
+          }`}
+        >
+          <Globe size={11} />
+          <span>SEO</span>
         </button>
       </div>
 
@@ -618,6 +1052,25 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   </button>
                 ))}
               </div>
+              {(props.text || props.subtext || props.label) && (
+                <div className="pt-1 border-t border-blue-500/15 space-y-1">
+                  <span className="text-[10px] font-medium text-zinc-400 block">1-Click Tone Rewrite</span>
+                  <div className="grid grid-cols-3 gap-1">
+                    {(['punchy', 'professional', 'friendly'] as const).map((tone) => (
+                      <button
+                        key={tone}
+                        type="button"
+                        disabled={isRewritingTone !== null}
+                        onClick={() => handleRewriteCopyTone(tone)}
+                        className="px-2 py-1 rounded-md bg-zinc-950 hover:bg-zinc-800 border border-zinc-800 text-[10px] font-medium text-blue-300 capitalize transition cursor-pointer flex items-center justify-center gap-1"
+                      >
+                        {isRewritingTone === tone && <Loader2 size={10} className="animate-spin" />}
+                        <span>{tone}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {aiStatusMsg && (
                 <p className="text-[10px] text-emerald-400 flex items-center gap-1">
                   <Check size={10} />
@@ -625,6 +1078,139 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 </p>
               )}
             </div>
+
+            {/* 3D Widget Inspector */}
+            {selectedElement.type === 'widget3d' && (
+              <div className="space-y-3 p-3 rounded-xl bg-zinc-900/60 border border-zinc-800" data-testid="widget3d-inspector">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                    <Box size={12} />
+                    <span>3D Widget Config</span>
+                  </span>
+                  {onOpenAi3DModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenAi3DModal}
+                      className="px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-[10px] text-blue-300 font-medium cursor-pointer"
+                    >
+                      AI 3D Studio
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                    3D Scene Preset
+                  </label>
+                  <select
+                    value={props.widget3d?.presetId || 'webgl-orbital-prism'}
+                    onChange={(e) => {
+                      const nextId = e.target.value as Widget3DPresetId;
+                      const found = BUILTIN_3D_PRESETS.find((p) => p.id === nextId);
+                      const nextCfg: Widget3DConfig = found
+                        ? { ...found.config }
+                        : { ...(props.widget3d || BUILTIN_3D_PRESETS[2].config), presetId: nextId };
+                      handlePropsChange({ widget3d: nextCfg });
+                    }}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                  >
+                    {BUILTIN_3D_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.presetMode === 'threejs-webgl' ? 'WebGL' : 'CSS 3D'})
+                      </option>
+                    ))}
+                    {props.widget3d?.presetId === 'ai-custom' && (
+                      <option value="ai-custom">AI Generated Custom 3D Scene</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                    3D Scene Title
+                  </label>
+                  <input
+                    type="text"
+                    value={props.widget3d?.title || ''}
+                    onChange={(e) =>
+                      handlePropsChange({
+                        widget3d: { ...(props.widget3d || BUILTIN_3D_PRESETS[2].config), title: e.target.value },
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                    Subtitle
+                  </label>
+                  <input
+                    type="text"
+                    value={props.widget3d?.subtitle || ''}
+                    onChange={(e) =>
+                      handlePropsChange({
+                        widget3d: { ...(props.widget3d || BUILTIN_3D_PRESETS[2].config), subtitle: e.target.value },
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                      Accent Color
+                    </label>
+                    <input
+                      type="color"
+                      value={props.widget3d?.accentColor || '#38bdf8'}
+                      onChange={(e) =>
+                        handlePropsChange({
+                          widget3d: { ...(props.widget3d || BUILTIN_3D_PRESETS[2].config), accentColor: e.target.value },
+                        })
+                      }
+                      className="w-full h-8 rounded border border-zinc-800 bg-transparent cursor-pointer p-0.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase text-zinc-400 mb-1">
+                      Height (px)
+                    </label>
+                    <input
+                      type="number"
+                      min={180}
+                      max={640}
+                      step={20}
+                      value={props.widget3d?.heightPx || 280}
+                      onChange={(e) =>
+                        handlePropsChange({
+                          widget3d: {
+                            ...(props.widget3d || BUILTIN_3D_PRESETS[2].config),
+                            heightPx: Math.max(180, Math.min(640, Number(e.target.value) || 280)),
+                          },
+                        })
+                      }
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center justify-between text-xs text-zinc-200 cursor-pointer pt-1">
+                  <span>Auto-rotate / ambient motion</span>
+                  <input
+                    type="checkbox"
+                    checked={props.widget3d?.autoRotate ?? true}
+                    onChange={(e) =>
+                      handlePropsChange({
+                        widget3d: { ...(props.widget3d || BUILTIN_3D_PRESETS[2].config), autoRotate: e.target.checked },
+                      })
+                    }
+                    className="accent-blue-500"
+                  />
+                </label>
+              </div>
+            )}
 
             {/* Primary Text Content */}
             {(selectedElement.type === 'heading' ||
@@ -799,15 +1385,53 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold uppercase text-zinc-300 mb-1">
-                    Alt Text
+                    Accessibility Alt Text
                   </label>
                   <input
                     type="text"
                     value={props.imageAlt || ''}
                     onChange={(e) => handlePropsChange({ imageAlt: e.target.value })}
+                    placeholder="Describe this image for screen readers..."
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-white"
+                  />
+                  {(!props.imageAlt || props.imageAlt.trim().length < 4) && (
+                    <p className="text-[10px] text-amber-300 mt-1">
+                      WCAG Accessibility: Add descriptive alt text (4+ characters).
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase text-zinc-300 mb-1">
+                    Media License Attribution
+                  </label>
+                  <input
+                    type="text"
+                    value={props.imageLicense || ''}
+                    onChange={(e) => handlePropsChange({ imageLicense: e.target.value })}
+                    placeholder="e.g. CC0 1.0 Universal"
                     className="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-white"
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Toggle Default Opt-In Compliance Guard */}
+            {selectedElement.type === 'toggle' && (
+              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                <label className="flex items-center justify-between text-xs text-zinc-200 cursor-pointer">
+                  <span>Pre-checked by default</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(props.toggleChecked)}
+                    onChange={(e) => handlePropsChange({ toggleChecked: e.target.checked })}
+                    className="accent-blue-500"
+                  />
+                </label>
+                {props.toggleChecked && (
+                  <p className="text-[10px] text-amber-300">
+                    Fair UX Warning: Optional consents and marketing toggles must start unchecked to avoid dark patterns.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1337,6 +1961,42 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* Live WCAG 2.1 AA Contrast Ratio Audit */}
+                {(() => {
+                  const fg = styles.textColor || '#ffffff';
+                  const bg = styles.backgroundColor || project.canvasBg || '#0f0f12';
+                  const isLarge = selectedElement.type === 'heading';
+                  const ratio = computeContrastRatio(fg, bg);
+                  const passes = meetsWcagAA(fg, bg, isLarge);
+                  return (
+                    <div
+                      className={`mt-2 px-2.5 py-1.5 rounded-lg border flex items-center justify-between gap-2 text-[10px] ${
+                        passes
+                          ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                          : 'bg-amber-950/50 border-amber-500/40 text-amber-200'
+                      }`}
+                    >
+                      <span>
+                        Contrast {ratio}:1 ({passes ? 'WCAG AA Pass' : `Needs >= ${isLarge ? '3.0' : '4.5'}:1`})
+                      </span>
+                      {!passes && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleStylesChange({
+                              textColor: '#ffffff',
+                              backgroundColor: bg.toLowerCase() === '#3b82f6' ? '#2563eb' : '#18181b',
+                            })
+                          }
+                          className="px-1.5 py-0.5 rounded bg-amber-500 text-zinc-950 font-semibold cursor-pointer"
+                        >
+                          Fix
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Opacity Slider */}
                 <div className="pt-1">
@@ -2779,6 +3439,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             </div>
           </div>
         )}
+
+        {/* ================= PER-PAGE SEO & OPEN GRAPH TAB ================= */}
+        {activeTab === 'seo' && renderSeoEditor()}
       </div>
     </aside>
   );

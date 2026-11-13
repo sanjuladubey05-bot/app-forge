@@ -1,0 +1,267 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --------------------------------------------------------
+    // Global Hardened Helpers
+    // --------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function hasValidOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // --------------------------------------------------------
+    // Validation Blueprints (Standalone Helpers)
+    // --------------------------------------------------------
+    function isValidUserPublicProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'photoUrl', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 100
+        && hasValidOptionalString(data, 'photoUrl', 512)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll(['uid', 'email', 'vercelConnected', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'vercelConnected', 'vercelAccountName', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.vercelConnected is bool
+        && hasValidOptionalString(data, 'vercelAccountName', 120)
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidForgeProject(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'isPublic', 'projectData', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'ownerId', 'name', 'description', 'isPublic', 'publishedUrl', 'presetName', 'projectData', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 140
+        && hasValidOptionalString(data, 'description', 500)
+        && data.isPublic is bool
+        && hasValidOptionalString(data, 'publishedUrl', 512)
+        && hasValidOptionalString(data, 'presetName', 40)
+        && data.projectData is map
+        && data.projectData.keys().size() >= 1
+        && data.projectData.keys().size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUploadedAsset(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'projectId', 'filename', 'mimeType', 'sizeBytes', 'url', 'createdAt'])
+        && data.keys().hasOnly(['id', 'ownerId', 'projectId', 'filename', 'mimeType', 'sizeBytes', 'url', 'createdAt'])
+        && isValidId(data.id)
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidId(data.projectId)
+        && data.filename is string
+        && data.filename.size() >= 1
+        && data.filename.size() <= 180
+        && data.mimeType is string
+        && data.mimeType in ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+        && data.sizeBytes is int
+        && data.sizeBytes > 0
+        && data.sizeBytes <= 2097152
+        && data.url is string
+        && data.url.size() >= 1
+        && data.url.size() <= 512
+        && data.createdAt is timestamp;
+    }
+
+    function isValidVercelDeployment(data) {
+      return data.keys().hasAll(['id', 'ownerId', 'projectId', 'vercelDeploymentId', 'framework', 'url', 'state', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'ownerId', 'projectId', 'vercelDeploymentId', 'framework', 'url', 'state', 'customDomain', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && isValidId(data.projectId)
+        && data.vercelDeploymentId is string
+        && data.vercelDeploymentId.size() >= 1
+        && data.vercelDeploymentId.size() <= 128
+        && data.framework in ['html', 'react-vite', 'nextjs', 'vue']
+        && data.url is string
+        && data.url.size() <= 512
+        && data.state in ['QUEUED', 'BUILDING', 'READY', 'ERROR', 'CANCELED']
+        && hasValidOptionalString(data, 'customDomain', 253)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function projectBelongsToCaller(projId) {
+      return exists(/databases/$(database)/documents/projects/$(projId))
+        && get(/databases/$(database)/documents/projects/$(projId)).data.ownerId == request.auth.uid;
+    }
+
+    // --------------------------------------------------------
+    // Connection Health Ping (Authenticated Only)
+    // --------------------------------------------------------
+    match /test/{docId} {
+      allow get: if isSignedIn() && isValidId(docId);
+      allow list, write: if false;
+    }
+
+    // --------------------------------------------------------
+    // Split User Profile & Isolated PII Collections
+    // --------------------------------------------------------
+    match /users/{userId}/public/{docId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(docId) && docId == 'profile';
+      allow list: if false;
+      allow create: if isEmailVerified()
+        && isOwner(userId)
+        && isValidId(docId)
+        && docId == 'profile'
+        && isValidUserPublicProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isEmailVerified()
+        && isOwner(userId)
+        && isValidId(docId)
+        && docId == 'profile'
+        && isValidUserPublicProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl', 'updatedAt']);
+      allow delete: if isEmailVerified() && isOwner(userId) && isValidId(docId) && docId == 'profile';
+    }
+
+    match /users/{userId}/private/{docId} {
+      allow get: if isEmailVerified() && isOwner(userId) && isValidId(docId) && docId == 'info';
+      allow list: if false;
+      allow create: if isEmailVerified()
+        && isOwner(userId)
+        && isValidId(docId)
+        && docId == 'info'
+        && isValidUserPrivateInfo(incoming())
+        && incoming().updatedAt == request.time;
+      allow update: if isEmailVerified()
+        && isOwner(userId)
+        && isValidId(docId)
+        && docId == 'info'
+        && isValidUserPrivateInfo(incoming())
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'vercelConnected', 'vercelAccountName', 'updatedAt']);
+      allow delete: if isEmailVerified() && isOwner(userId) && isValidId(docId) && docId == 'info';
+    }
+
+    // --------------------------------------------------------
+    // Cloud Projects Collection
+    // --------------------------------------------------------
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId)
+        && (existing().isPublic == true || (isSignedIn() && existing().ownerId == request.auth.uid));
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isEmailVerified()
+        && isValidId(projectId)
+        && isValidForgeProject(incoming())
+        && incoming().id == projectId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isEmailVerified()
+        && isValidId(projectId)
+        && isValidForgeProject(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Save project editor design & theme
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'presetName', 'projectData', 'updatedAt']) ||
+          // Action 2: Update public publish state / URL
+          incoming().diff(existing()).affectedKeys().hasOnly(['isPublic', 'publishedUrl', 'updatedAt'])
+        );
+      allow delete: if isEmailVerified() && isValidId(projectId) && existing().ownerId == request.auth.uid;
+    }
+
+    // --------------------------------------------------------
+    // Uploaded Media Assets Collection
+    // --------------------------------------------------------
+    match /assets/{assetId} {
+      allow get: if isSignedIn() && isValidId(assetId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isEmailVerified()
+        && isValidId(assetId)
+        && isValidUploadedAsset(incoming())
+        && incoming().id == assetId
+        && incoming().createdAt == request.time
+        && projectBelongsToCaller(incoming().projectId);
+      allow update: if false;
+      allow delete: if isEmailVerified() && isValidId(assetId) && existing().ownerId == request.auth.uid;
+    }
+
+    // --------------------------------------------------------
+    // Vercel Deployment History Collection
+    // --------------------------------------------------------
+    match /deployments/{deployId} {
+      allow get: if isSignedIn() && isValidId(deployId) && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isEmailVerified()
+        && isValidId(deployId)
+        && isValidVercelDeployment(incoming())
+        && incoming().id == deployId
+        && incoming().state in ['QUEUED', 'BUILDING']
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && projectBelongsToCaller(incoming().projectId);
+      allow update: if isEmailVerified()
+        && isValidId(deployId)
+        && isValidVercelDeployment(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().id == existing().id
+        && incoming().projectId == existing().projectId
+        && incoming().vercelDeploymentId == existing().vercelDeploymentId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Poll status transition while deployment is still in progress (non-terminal)
+          (existing().state in ['QUEUED', 'BUILDING'] && incoming().diff(existing()).affectedKeys().hasOnly(['state', 'url', 'updatedAt'])) ||
+          // Action 2: Attach custom domain after READY
+          (existing().state == 'READY' && incoming().state == existing().state && incoming().diff(existing()).affectedKeys().hasOnly(['customDomain', 'updatedAt']))
+        );
+      allow delete: if isEmailVerified() && isValidId(deployId) && existing().ownerId == request.auth.uid;
+    }
+  }
+}

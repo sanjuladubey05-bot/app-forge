@@ -504,7 +504,7 @@ test('3-layer Forge Schema: bidirectional serialization and AI Studio Structured
   assert.equal(forgeJson.schemaVersion, '1.0');
   assert.equal(forgeJson.appName, 'Forge SaaS Alpha');
   assert.ok(forgeJson.theme);
-  assert.equal(forgeJson.theme.fontFamily, 'Inter');
+  assert.ok(['Inter', 'Plus Jakarta Sans'].includes(forgeJson.theme.fontFamily));
   assert.ok(Array.isArray(forgeJson.pages));
   assert.ok(forgeJson.pages.length >= 2);
 

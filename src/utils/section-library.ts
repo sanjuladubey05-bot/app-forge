@@ -7,6 +7,7 @@
 
 import { CanvasElement, ComponentType } from '../types/editor';
 import { createNewElement } from './project-engine';
+import { LICENSED_STOCK_ASSETS } from './licensed-assets';
 
 export type SectionCategory = 
   | 'website' 
@@ -169,19 +170,19 @@ export const PREBUILT_SECTIONS: PrebuiltSection[] = [
       });
 
       const cardStarter = makeElement('metric', {
-        metricLabel: 'Starter Tier - Free',
+        metricLabel: 'Starter Tier - Free ($0 due)',
         metricValue: '$0 /mo',
-        trendText: 'Unlimited personal prototypes',
+        metricTrend: 'Single workspace • No card required',
       });
 
       const cardPro = makeElement('metric', {
-        metricLabel: 'Pro Tier - Full Access',
+        metricLabel: 'Pro Tier - Cancel Anytime',
         metricValue: '$29 /mo',
-        trendText: '+ Unlimited multi-page apps and custom export',
+        metricTrend: 'Multi-page exports • 14-day refund policy',
       });
 
       const btnPlan = makeElement('button', {
-        buttonText: 'Choose Pro Plan',
+        text: 'Choose Pro Plan ($29/mo)',
         buttonVariant: 'primary',
         buttonSize: 'md',
       });
@@ -218,15 +219,21 @@ export const PREBUILT_SECTIONS: PrebuiltSection[] = [
         rows: 3,
       });
 
+      const consentToggle = makeElement('toggle', {
+        label: 'I consent to process my inquiry under the Privacy Policy (Age 13+)',
+        toggleChecked: false,
+        subtext: 'Required before sending form data. Request deletion anytime.',
+      });
+
       const submitBtn = makeElement('button', {
-        buttonText: 'Send Inquiry',
+        text: 'Send Inquiry',
         buttonVariant: 'primary',
         buttonSize: 'md',
-        whenClicked: 'toast',
+        whenClicked: 'submitForm',
         toastMessage: 'Your message has been sent successfully!',
       });
 
-      return [heading, nameInput, emailInput, msgInput, submitBtn];
+      return [heading, nameInput, emailInput, msgInput, consentToggle, submitBtn];
     },
   },
   {
@@ -234,14 +241,14 @@ export const PREBUILT_SECTIONS: PrebuiltSection[] = [
     name: 'Website Footer',
     category: 'website',
     categoryLabel: 'Website',
-    description: 'Clean bottom footer with copyright notice and navigation links.',
+    description: 'Clean bottom footer with business details, legal disclosures, and unsubscribe notice.',
     elements: () => {
       const divider = makeElement('divider');
       const footerText = makeElement('text', {
-        text: '© 2026 AppForge Studio. All rights reserved. Built with No-Code visual architecture.',
+        text: '© 2026 AppForge Studio LLC · Privacy Policy · Terms of Service · 14-Day Refund Policy · Data Deletion & Email Unsubscribe',
       });
       footerText.styles.fontSize = 'xs';
-      footerText.styles.textColor = '#71717a';
+      footerText.styles.textColor = '#a1a1aa';
 
       return [divider, footerText];
     },
@@ -294,19 +301,25 @@ export const PREBUILT_SECTIONS: PrebuiltSection[] = [
       });
 
       const emailInput = makeElement('input', {
-        inputLabel: 'Email Address',
+        label: 'Email Address',
         placeholder: 'you@example.com',
       });
 
-      const btnSubscribe = makeElement('button', {
-        buttonText: 'Subscribe Now',
-        buttonVariant: 'primary',
-        buttonSize: 'md',
-        whenClicked: 'toast',
-        toastMessage: 'Subscribed to Weekly Developer Digest!',
+      const optInToggle = makeElement('toggle', {
+        label: 'Send me weekly product updates (Unsubscribe anytime)',
+        toggleChecked: false,
+        subtext: 'Every email includes a one-click unsubscribe link.',
       });
 
-      return [card, emailInput, btnSubscribe];
+      const btnSubscribe = makeElement('button', {
+        text: 'Subscribe',
+        buttonVariant: 'primary',
+        buttonSize: 'md',
+        whenClicked: 'submitForm',
+        toastMessage: 'Subscribed! Every email includes a one-click unsubscribe link.',
+      });
+
+      return [card, emailInput, optInToggle, btnSubscribe];
     },
   },
 
@@ -331,21 +344,20 @@ export const PREBUILT_SECTIONS: PrebuiltSection[] = [
       });
 
       const card = makeElement('card', {
-        title: 'AppForge Professional Edition',
-        content: 'Annual Subscription • Billed at $290/year (Save 17% vs monthly). Includes unlimited multi-page projects and instant code export.',
-        bgColor: '#18181b',
+        text: 'AppForge Professional Edition',
+        subtext: 'Total due today: $290.00/year (taxes included where applicable). Zero hidden fees. Backed by a 14-day refund policy.',
       });
 
       const emailField = makeElement('input', {
-        inputLabel: 'Billing Email Address',
+        label: 'Billing Email Address',
         placeholder: 'billing@company.com',
       });
 
       const btnPay = makeElement('button', {
-        buttonText: 'Pay $290 (Prototype Test)',
+        text: 'Pay $290.00 Total (Prototype Test)',
         buttonVariant: 'primary',
         buttonSize: 'lg',
-        whenClicked: 'toast',
+        whenClicked: 'showToast',
         toastMessage: 'Prototype Payment Simulation: Order confirmed! (No real charges made)',
       });
 
@@ -357,30 +369,31 @@ export const PREBUILT_SECTIONS: PrebuiltSection[] = [
     name: 'Product Details Showcase',
     category: 'business',
     categoryLabel: 'Business & Payment',
-    description: 'Commerce product card with image placeholder, pricing, and Add to Cart button.',
+    description: 'Commerce product card with licensed image, transparent price, and Add to Cart button.',
     elements: () => {
       const img = makeElement('image', {
-        imageUrl: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80',
-        altText: 'Premium Wireless Headphones',
+        imageUrl: LICENSED_STOCK_ASSETS[1].url,
+        imageAlt: LICENSED_STOCK_ASSETS[1].alt,
+        imageLicense: LICENSED_STOCK_ASSETS[1].license,
       });
 
       const heading = makeElement('heading', {
         text: 'Studio Precision Headphones',
-        level: 'h2',
-        subtitle: 'Active noise cancellation with 40-hour ultra battery life.',
+        headingLevel: 'h2',
+        subtext: 'Active noise cancellation with 40-hour battery life and 14-day return policy.',
       });
 
       const priceMetric = makeElement('metric', {
-        metricLabel: 'In Stock • Free 2-Day Shipping',
+        metricLabel: 'Total Price • Free Standard Shipping',
         metricValue: '$249.00',
-        trendText: 'Rated 4.9/5 by 1,280 verified buyers',
+        metricTrend: 'CC0 Licensed Preview • Zero hidden fees',
       });
 
       const btnCart = makeElement('button', {
-        buttonText: 'Add to Shopping Cart',
+        text: 'Add to Shopping Cart ($249.00)',
         buttonVariant: 'primary',
         buttonSize: 'md',
-        whenClicked: 'toast',
+        whenClicked: 'showToast',
         toastMessage: 'Product added to shopping cart!',
       });
 
@@ -480,9 +493,9 @@ export const PREBUILT_SECTIONS: PrebuiltSection[] = [
       });
 
       const kpi3 = makeElement('metric', {
-        metricLabel: 'System SLA Uptime',
-        metricValue: '99.98%',
-        trendText: 'Optimal node health',
+        metricLabel: 'Target Availability',
+        metricValue: '99.9% target',
+        metricTrend: 'Monitored service status',
       });
 
       return [kpi1, kpi2, kpi3];
