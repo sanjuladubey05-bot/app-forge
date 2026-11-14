@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -16,7 +16,7 @@ import {
   Menu,
 } from 'lucide-react';
 import { ActionStep, CanvasElement, Project } from '../types/editor';
-import { ensureProjectPages, evaluateCondition, getPageTransitionClass, sanitizeUrl } from '../utils/project-engine';
+import { ensureProjectPages, evaluateCondition, sanitizeUrl } from '../utils/project-engine';
 import { ensureComplianceConfig } from '../utils/compliance-audit';
 import { ComplianceHubModal, ComplianceTabId } from './ComplianceHubModal';
 import { CookieConsentBanner } from './CookieConsentBanner';
@@ -58,16 +58,6 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
 
   const compliance = ensureComplianceConfig(project);
   const activePage = project.pages.find((p) => p.id === activePageId) || project.pages[0];
-
-  useEffect(() => {
-    if (!activePage) return;
-    const prevTitle = document.title;
-    const seoTitle = activePage.seo?.title || `${activePage.name} · ${project.name}`;
-    document.title = seoTitle;
-    return () => {
-      document.title = prevTitle;
-    };
-  }, [activePage, project.name]);
 
   const pageHasForm = React.useMemo(() => {
     const check = (els: CanvasElement[]): boolean =>
@@ -476,15 +466,22 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
           </div>
         );
 
-      case 'widget3d':
+      case 'widget3d': {
+        const cfg = props.widget3d || {
+          presetId: 'webgl-orbital-prism' as const,
+          presetMode: 'threejs-webgl' as const,
+          title: 'Interactive 3D Widget',
+          heightPx: 280,
+        };
         return (
           <Widget3DSandbox
             key={el.id}
-            config={props.widget3d}
+            config={cfg}
             themeTokens={project.themeTokens}
             interactive={true}
           />
         );
+      }
 
       default:
         return null;
@@ -601,11 +598,12 @@ export const PublicViewer: React.FC<PublicViewerProps> = ({
       {/* Main Content */}
       <main id="main-content" tabIndex={-1} className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8">
         <div
-          key={activePage?.id}
-          style={{ backgroundColor: activePage?.canvasBg || project.themeTokens?.backgroundColor || project.canvasBg || '#0f0f12' }}
-          className={`rounded-2xl border border-zinc-800/80 p-5 sm:p-8 space-y-5 shadow-2xl ${getPageTransitionClass(activePage?.transition)}`}
-          data-testid="public-page-container"
-          data-page-transition={activePage?.transition || 'fade'}
+          style={{
+            backgroundColor: activePage?.canvasBg || project.themeTokens?.backgroundColor || project.canvasBg || '#0f0f12',
+            color: project.themeTokens?.textColor,
+            fontFamily: project.themeTokens?.fontFamily ? `'${project.themeTokens.fontFamily}', system-ui, sans-serif` : undefined,
+          }}
+          className="rounded-2xl border border-zinc-800/80 p-5 sm:p-8 space-y-5 shadow-2xl"
         >
           {activePage && activePage.elements.length > 0 ? (
             <>

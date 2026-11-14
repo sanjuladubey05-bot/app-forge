@@ -39,10 +39,7 @@ export const TutorialQuestWidget: React.FC<TutorialQuestWidgetProps> = ({
   onCreateProfilePageShortcut,
 }) => {
   const [isDismissed, setIsDismissed] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) return true;
-    return !project.name.toLowerCase().includes('practice');
-  });
+  const [isMinimized, setIsMinimized] = useState(true);
   const [previewCompletedOnce, setPreviewCompletedOnce] = useState(false);
 
   useEffect(() => {

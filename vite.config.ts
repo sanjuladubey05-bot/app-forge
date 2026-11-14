@@ -10,17 +10,7 @@ export default defineConfig(() => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
-      dedupe: [
-        'firebase',
-        'firebase/app',
-        'firebase/auth',
-        'firebase/firestore',
-        '@firebase/app',
-        '@firebase/auth',
-        '@firebase/firestore',
-        '@firebase/component',
-        '@firebase/util',
-      ],
+      dedupe: ['firebase', '@firebase/app', '@firebase/component', '@firebase/util', 'react', 'react-dom'],
     },
     optimizeDeps: {
       include: [
@@ -29,8 +19,8 @@ export default defineConfig(() => {
         'firebase/firestore',
         'three',
         'three/examples/jsm/environments/RoomEnvironment.js',
-        'jszip',
         'lucide-react',
+        'jszip',
       ],
     },
     server: {

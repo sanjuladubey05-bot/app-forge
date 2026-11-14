@@ -17,9 +17,9 @@ import {
   WorkspaceMode,
   StudioTheme,
   AlignmentType,
-  PageSeoConfig,
   ThemePresetName,
   ThemeTokens,
+  PageSeoConfig,
   Widget3DConfig
 } from './types/editor';
 import { 
@@ -33,7 +33,6 @@ import {
   setHomePage,
   switchActivePage,
   updatePageTransition,
-  updatePageSeo,
   addElement, 
   updateElement, 
   deleteElement, 
@@ -48,9 +47,6 @@ import {
   getAlignedElementStyles,
   alignElements
 } from './utils/project-engine';
-import { applyThemePreset, ensureThemeTokens, updateThemeTokens } from './utils/theme-engine';
-import { useAuth } from './contexts/AuthContext';
-import { saveProjectToCloud } from './utils/cloud-sync';
 import { 
   getStoredProjects, 
   saveStoredProjects, 
@@ -112,6 +108,9 @@ import { auditProjectCompliance } from './utils/compliance-audit';
 import { LandingPage } from './components/LandingPage';
 import { Ai3DModal } from './components/Ai3DModal';
 import { DeployPanel } from './components/DeployPanel';
+import { useAuth } from './contexts/AuthContext';
+import { applyThemePreset, updateThemeTokens } from './utils/theme-engine';
+import { listUserCloudProjects, saveProjectToCloud } from './utils/cloud-sync';
 
 export default function App() {
   const { user } = useAuth();
@@ -140,8 +139,8 @@ export default function App() {
   const [isAiStudioModalOpen, setIsAiStudioModalOpen] = useState(false);
   const [isAi3DModalOpen, setIsAi3DModalOpen] = useState(false);
   const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
-  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [isPublishModalOpen, setIsPublishModalOpen] = useState(false);
   const [complianceModalTab, setComplianceModalTab] = useState<ComplianceTabId | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
@@ -295,14 +294,12 @@ export default function App() {
       practice: 'Practice Project (Play-to-Build)',
       saas: 'Executive Analytics Hub',
       mobile: 'Mobile Commerce App',
-      portfolio: 'Creative Studio Portfolio',
-      shop: 'Modern Storefront',
+      linkinbio: '3D Creator Link-in-Bio',
       contact: 'Enterprise Lead Portal',
       card: 'Product Showcase Card',
-      linkinbio: '3D Creator Link-in-Bio',
       blank: 'Blank Canvas App',
     };
-    const viewport: ViewportMode = templateId === 'mobile' || templateId === 'linkinbio' ? 'mobile' : 'desktop';
+    const viewport: ViewportMode = templateId === 'mobile' ? 'mobile' : 'desktop';
     handleCreateProject(titles[templateId] || 'New AppForge App', templateId, viewport);
   };
 
@@ -360,69 +357,6 @@ export default function App() {
 
   const handleUpdatePageTransition = (pageId: string, transition: PageTransition) => {
     applyProjectMutation((proj) => updatePageTransition(proj, pageId, transition));
-    handleLogExecution('Pages', `Updated page transition to "${transition}"`, 'action', 'info');
-  };
-
-  const handleUpdatePageSeo = (pageId: string, seoPatch: Partial<PageSeoConfig>) => {
-    applyProjectMutation((proj) => updatePageSeo(proj, pageId, seoPatch));
-  };
-
-  const handleApplyThemePreset = (preset: Exclude<ThemePresetName, 'custom'>) => {
-    applyProjectMutation((proj) => applyThemePreset(proj, preset));
-    handleLogExecution('Theme', `Applied "${preset}" global design tokens`, 'action', 'success');
-  };
-
-  const handleUpdateThemeTokens = (patch: Partial<ThemeTokens>) => {
-    applyProjectMutation((proj) => updateThemeTokens(proj, patch));
-  };
-
-  const handleInsert3DWidget = (config: Widget3DConfig) => {
-    const el = createNewElement('widget3d');
-    el.name = config.title || '3D UI Widget';
-    el.props = { ...el.props, widget3d: config };
-    applyProjectMutation((proj) => addElement(proj, el));
-    setSelectedElementId(el.id);
-    setIsAi3DModalOpen(false);
-    handleLogExecution('3D Studio', `Added "${el.name}" 3D widget to screen`, 'action', 'success');
-  };
-
-  const handleUpdateDeployMeta = (patch: {
-    lastVercelProjectId?: string;
-    lastVercelProjectName?: string;
-    lastDeploymentUrl?: string;
-    customDomains?: string[];
-  }) => {
-    applyProjectMutation((proj) => ({
-      ...proj,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    }));
-  };
-
-  const handleSyncActiveProjectToCloud = async () => {
-    if (!activeProject || !user) return;
-    setIsSyncingCloud(true);
-    try {
-      await saveProjectToCloud(activeProject, user.uid);
-      setLastSavedText(`Synced to Cloud ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-      handleLogExecution('Cloud Sync', `Saved "${activeProject.name}" to Firestore`, 'action', 'success');
-    } catch (err: any) {
-      handleLogExecution('Cloud Sync', err?.message || 'Cloud sync failed', 'action', 'error');
-    } finally {
-      setIsSyncingCloud(false);
-    }
-  };
-
-  const handleImportCloudProjects = (cloudProjects: Project[]) => {
-    if (cloudProjects.length === 0) return;
-    setProjects((prev) => {
-      const map = new Map<string, Project>();
-      cloudProjects.forEach((cp) => map.set(cp.id, ensureProjectPages(cp)));
-      prev.forEach((lp) => {
-        if (!map.has(lp.id)) map.set(lp.id, lp);
-      });
-      return Array.from(map.values());
-    });
   };
 
   // Element Actions
@@ -673,6 +607,81 @@ export default function App() {
     }
   }, [handleLogExecution]);
 
+  // Global Theme Tokens, Page SEO & 3D Widget Handlers
+  const handleApplyThemePreset = useCallback(
+    (presetName: Exclude<ThemePresetName, 'custom'>) => {
+      applyProjectMutation((proj) => applyThemePreset(proj, presetName));
+      handleLogExecution('Theme', `Applied global theme preset "${presetName}"`, 'action', 'success');
+    },
+    [applyProjectMutation, handleLogExecution]
+  );
+
+  const handleUpdateThemeTokens = useCallback(
+    (patch: Partial<ThemeTokens>) => {
+      applyProjectMutation((proj) => updateThemeTokens(proj, patch));
+    },
+    [applyProjectMutation]
+  );
+
+  const handleUpdatePageSeo = useCallback(
+    (pageId: string, seo: PageSeoConfig) => {
+      applyProjectMutation((proj) => ({
+        ...proj,
+        pages: proj.pages.map((p) => (p.id === pageId ? { ...p, seo } : p)),
+        updatedAt: new Date().toISOString(),
+      }));
+    },
+    [applyProjectMutation]
+  );
+
+  const handleInsert3DWidget = useCallback(
+    (config: Widget3DConfig) => {
+      const newEl = createNewElement('widget3d');
+      newEl.name = config.title || '3D UI Widget';
+      newEl.props = { ...newEl.props, widget3d: config };
+      applyProjectMutation((proj) => addElement(proj, newEl));
+      setSelectedElementId(newEl.id);
+      handleLogExecution('3D Studio', `Inserted 3D widget "${newEl.name}"`, 'action', 'success');
+    },
+    [applyProjectMutation, handleLogExecution]
+  );
+
+  const handleSyncCloudProject = useCallback(async () => {
+    if (!user || !activeProject) return;
+    setIsSyncingCloud(true);
+    try {
+      await saveProjectToCloud(activeProject, user.uid, {
+        publishedUrl: activeProject.lastDeploymentUrl,
+      });
+      handleLogExecution('Cloud Sync', `Saved "${activeProject.name}" to Firebase Cloud Firestore`, 'action', 'success');
+    } catch {
+      handleLogExecution('Cloud Sync', 'Cloud sync skipped (check network or rules).', 'action', 'warning');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  }, [user, activeProject, handleLogExecution]);
+
+  const handleLoadCloudProjects = useCallback(async (): Promise<number> => {
+    if (!user) return 0;
+    const cloudList = await listUserCloudProjects(user.uid);
+    if (cloudList.length > 0) {
+      setProjects((prev) => {
+        const merged = [...prev];
+        for (const item of cloudList) {
+          if (!item.project) continue;
+          const idx = merged.findIndex((p) => p.id === item.id);
+          if (idx >= 0) {
+            merged[idx] = ensureProjectPages(item.project);
+          } else {
+            merged.unshift(ensureProjectPages(item.project));
+          }
+        }
+        return merged;
+      });
+    }
+    return cloudList.length;
+  }, [user]);
+
   // Resolve active shortcuts (merging defaults, localStorage, and project custom overrides)
   const activeShortcuts = getActiveShortcuts(activeProject);
 
@@ -873,9 +882,21 @@ export default function App() {
     return (
       <>
         <LandingPage
-          onOpenStudio={() => setView('dashboard')}
-          onQuickStartTemplate={(templateId) => handleQuickCreate(templateId)}
-          onOpenCompliance={(tab) => setComplianceModalTab(tab)}
+          projectCount={projects.length}
+          onOpenStudio={() => {
+            if (projects.length > 0) {
+              const targetId = activeProjectId && projects.some((p) => p.id === activeProjectId)
+                ? activeProjectId
+                : projects[0].id;
+              setActiveId(targetId);
+              setView('editor');
+            } else {
+              handleQuickCreate('saas');
+            }
+          }}
+          onOpenDashboard={() => setView('dashboard')}
+          onQuickStart3D={() => handleQuickCreate('linkinbio')}
+          onOpenCompliance={(tab = 'privacy') => setComplianceModalTab(tab)}
         />
         <ComplianceHubModal
           isOpen={complianceModalTab !== null}
@@ -908,8 +929,8 @@ export default function App() {
           onDuplicateProject={handleDuplicateProject}
           onQuickCreate={handleQuickCreate}
           onOpenCompliance={(tab = 'privacy') => setComplianceModalTab(tab)}
-          onBackToLanding={() => setView('landing')}
-          onImportCloudProjects={handleImportCloudProjects}
+          onOpenLanding={() => setView('landing')}
+          onLoadCloudProjects={handleLoadCloudProjects}
         />
         <ProjectCreateModal
           isOpen={isCreateModalOpen}
@@ -980,8 +1001,7 @@ export default function App() {
         onOpenPublish={handleOpenPublish}
         onOpenDeploy={() => setIsDeployModalOpen(true)}
         onOpenAiStudio={() => setIsAiStudioModalOpen(true)}
-        onOpenAi3D={() => setIsAi3DModalOpen(true)}
-        onSyncCloud={handleSyncActiveProjectToCloud}
+        onSyncCloud={handleSyncCloudProject}
         isSyncingCloud={isSyncingCloud}
         isSaving={isSaving}
         lastSavedText={lastSavedText}
@@ -1124,9 +1144,9 @@ export default function App() {
             zoom={activeProject.zoom}
             canvasBg={activeProject.canvasBg}
             canvasPadding={activeProject.canvasPadding}
-            themeTokens={ensureThemeTokens(activeProject)}
             snapToGrid={activeProject.snapToGrid ?? true}
             showGuides={activeProject.showGuides ?? false}
+            themeTokens={activeProject.themeTokens}
             onToggleSnapToGrid={() => {
               applyProjectMutation((proj) => ({
                 ...proj,
@@ -1152,16 +1172,15 @@ export default function App() {
               onUpdateProjectSettings={(settings) => {
                 applyProjectMutation((proj) => ({ ...proj, ...settings }));
               }}
+              onApplyThemePreset={handleApplyThemePreset}
+              onUpdateThemeTokens={handleUpdateThemeTokens}
+              onUpdatePageSeo={handleUpdatePageSeo}
+              onOpenAi3DModal={() => setIsAi3DModalOpen(true)}
               onDeleteElement={handleDeleteElement}
               onDuplicateElement={handleDuplicateElement}
               onToggleVisibility={handleToggleVisibility}
               onToggleLock={handleToggleLock}
               onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
-              onApplyThemePreset={handleApplyThemePreset}
-              onUpdateThemeTokens={handleUpdateThemeTokens}
-              onUpdatePageSeo={handleUpdatePageSeo}
-              onUpdatePageTransition={handleUpdatePageTransition}
-              onOpenAi3DModal={() => setIsAi3DModalOpen(true)}
             />
           </div>
 
@@ -1190,20 +1209,19 @@ export default function App() {
                     onUpdateProjectSettings={(settings) => {
                       applyProjectMutation((proj) => ({ ...proj, ...settings }));
                     }}
+                    onApplyThemePreset={handleApplyThemePreset}
+                    onUpdateThemeTokens={handleUpdateThemeTokens}
+                    onUpdatePageSeo={handleUpdatePageSeo}
+                    onOpenAi3DModal={() => {
+                      setIsAi3DModalOpen(true);
+                      setMobileDrawer('none');
+                    }}
                     onDeleteElement={handleDeleteElement}
                     onDuplicateElement={handleDuplicateElement}
                     onToggleVisibility={handleToggleVisibility}
                     onToggleLock={handleToggleLock}
                     onOpenShortcutsModal={() => {
                       setIsShortcutsModalOpen(true);
-                      setMobileDrawer('none');
-                    }}
-                    onApplyThemePreset={handleApplyThemePreset}
-                    onUpdateThemeTokens={handleUpdateThemeTokens}
-                    onUpdatePageSeo={handleUpdatePageSeo}
-                    onUpdatePageTransition={handleUpdatePageTransition}
-                    onOpenAi3DModal={() => {
-                      setIsAi3DModalOpen(true);
                       setMobileDrawer('none');
                     }}
                   />
@@ -1339,30 +1357,29 @@ export default function App() {
           project={activeProject}
           onInsertAiNodes={handleInsertAiNodes}
           onImportForgeProject={handleImportForgeProject}
-          onOpenAi3DModal={() => {
-            setIsAiStudioModalOpen(false);
-            setIsAi3DModalOpen(true);
-          }}
+          onOpenAi3DModal={() => setIsAi3DModalOpen(true)}
         />
       )}
 
-      {/* Free & AI 3D Widget Studio Modal */}
+      {/* 3D & AI Scene Studio Modal */}
       {activeProject && (
         <Ai3DModal
           isOpen={isAi3DModalOpen}
           onClose={() => setIsAi3DModalOpen(false)}
-          themeTokens={ensureThemeTokens(activeProject)}
+          themeTokens={activeProject.themeTokens}
           onInsertWidget={handleInsert3DWidget}
         />
       )}
 
-      {/* Vercel Own-Account Deployment & Custom Domain Modal */}
+      {/* Own-Account Vercel Deploy & Custom Domain Modal */}
       {activeProject && (
         <DeployPanel
           isOpen={isDeployModalOpen}
           onClose={() => setIsDeployModalOpen(false)}
           project={activeProject}
-          onUpdateDeployMeta={handleUpdateDeployMeta}
+          onUpdateDeploymentMeta={(patch) =>
+            applyProjectMutation((proj) => ({ ...proj, ...patch, updatedAt: new Date().toISOString() }))
+          }
         />
       )}
 

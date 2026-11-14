@@ -1,55 +1,58 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  X,
+  Rocket,
   Check,
-  Copy,
+  AlertCircle,
   ExternalLink,
+  Copy,
+  RefreshCw,
   Globe,
   KeyRound,
-  Link2Off,
+  LogOut,
   Loader2,
-  RefreshCw,
-  Rocket,
   ShieldCheck,
-  X,
 } from 'lucide-react';
 import { ExportFramework, Project } from '../types/editor';
 import { useAuth } from '../contexts/AuthContext';
-import { safeZipFilename } from '../utils/zip-exporter';
 
 interface DeployPanelProps {
   isOpen: boolean;
   onClose: () => void;
   project: Project;
-  onUpdateDeployMeta: (patch: {
-    lastVercelProjectId?: string;
-    lastVercelProjectName?: string;
-    lastDeploymentUrl?: string;
-    customDomains?: string[];
-  }) => void;
+  onUpdateDeploymentMeta?: (patch: Partial<Project>) => void;
 }
 
 interface VercelConnectionState {
   connected: boolean;
   oauthEnabled: boolean;
-  authMode?: 'oauth' | 'pat' | null;
-  vercelUsername?: string | null;
-  vercelEmail?: string | null;
-  teamId?: string | null;
+  vercelAccountName?: string;
+  vercelTeamId?: string | null;
 }
 
-interface DomainVerificationState {
-  domain: string;
-  verified?: boolean;
-  configuredBy?: string | null;
-  dnsRecords?: { type: string; host: string; value: string }[];
-  error?: string;
+interface DeploymentStatus {
+  id: string;
+  url: string;
+  readyState: 'QUEUED' | 'BUILDING' | 'INITIALIZING' | 'READY' | 'ERROR' | 'CANCELED';
+  inspectorUrl?: string;
+  errorMessage?: string;
+}
+
+function defaultProjectSlug(name: string): string {
+  return (
+    (name || 'appforge-site')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'appforge-site'
+  );
 }
 
 export const DeployPanel: React.FC<DeployPanelProps> = ({
   isOpen,
   onClose,
   project,
-  onUpdateDeployMeta,
+  onUpdateDeploymentMeta,
 }) => {
   const { user, signingIn, authError, signInWithGoogle, getIdToken } = useAuth();
   const [conn, setConn] = useState<VercelConnectionState>({
@@ -59,48 +62,40 @@ export const DeployPanel: React.FC<DeployPanelProps> = ({
   const [loadingConn, setLoadingConn] = useState(false);
   const [patInput, setPatInput] = useState('');
   const [connecting, setConnecting] = useState(false);
-  const [connError, setConnError] = useState<string | null>(null);
-
   const [framework, setFramework] = useState<ExportFramework>('react-vite');
-  const [projectSlug, setProjectSlug] = useState(() => safeZipFilename(project.name));
+  const [vercelProjectName, setVercelProjectName] = useState(
+    project.lastVercelProjectName || defaultProjectSlug(project.name)
+  );
   const [deploying, setDeploying] = useState(false);
-  const [deployState, setDeployState] = useState<{
-    id?: string;
-    readyState?: string;
-    url?: string;
-    error?: string;
-  } | null>(null);
-  const [copiedUrl, setCopiedUrl] = useState(false);
-
+  const [deployment, setDeployment] = useState<DeploymentStatus | null>(
+    project.lastDeploymentUrl
+      ? {
+          id: 'last',
+          url: project.lastDeploymentUrl,
+          readyState: 'READY',
+        }
+      : null
+  );
   const [domainInput, setDomainInput] = useState('');
-  const [addingDomain, setAddingDomain] = useState(false);
-  const [domainStatus, setDomainStatus] = useState<DomainVerificationState | null>(null);
+  const [domainResult, setDomainResult] = useState<{
+    domain: string;
+    verified: boolean;
+    dnsRecords: Array<{ type: string; name: string; value: string }>;
+  } | null>(null);
+  const [domainBusy, setDomainBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
-
-  const authHeaders = useCallback(async () => {
+  const authHeaders = async (): Promise<Record<string, string>> => {
     const token = await getIdToken();
-    if (!token) throw new Error('Please sign in with Google first.');
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    };
-  }, [getIdToken]);
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
-  const fetchConnectionStatus = useCallback(async () => {
+  const loadConnection = async () => {
     if (!user) return;
     setLoadingConn(true);
-    setConnError(null);
+    setErrorMsg(null);
     try {
       const headers = await authHeaders();
       const resp = await fetch('/api/vercel/connection', { headers });
@@ -109,246 +104,231 @@ export const DeployPanel: React.FC<DeployPanelProps> = ({
         setConn({
           connected: Boolean(data.connected),
           oauthEnabled: Boolean(data.oauthEnabled),
-          authMode: data.authMode || null,
-          vercelUsername: data.vercelUsername || null,
-          vercelEmail: data.vercelEmail || null,
-          teamId: data.teamId || null,
+          vercelAccountName: data.vercelAccountName,
+          vercelTeamId: data.vercelTeamId,
         });
       }
-    } catch (err: any) {
-      setConnError(err?.message || 'Unable to verify Vercel connection.');
+    } catch {
+      setErrorMsg('Unable to check Vercel connection right now.');
     } finally {
       setLoadingConn(false);
     }
-  }, [authHeaders, user]);
+  };
 
   useEffect(() => {
     if (isOpen && user) {
-      fetchConnectionStatus();
+      void loadConnection();
     }
-  }, [isOpen, user, fetchConnectionStatus]);
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, user?.uid]);
 
   useEffect(() => {
     const onMsg = (ev: MessageEvent) => {
-      if (ev.data && typeof ev.data === 'object' && ev.data.type === 'AF_VERCEL_OAUTH_OK') {
-        fetchConnectionStatus();
+      if (ev.data?.type === 'AF_VERCEL_OAUTH_OK') {
+        void loadConnection();
       }
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
-  }, [fetchConnectionStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
 
   if (!isOpen) return null;
 
-  const handleOAuthConnect = async () => {
+  const handleConnectPat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!patInput.trim()) return;
     setConnecting(true);
-    setConnError(null);
+    setErrorMsg(null);
     try {
-      const headers = await authHeaders();
-      const resp = await fetch('/api/vercel/oauth/url', { headers });
-      const data = await resp.json();
-      if (!resp.ok || !data?.url) {
-        throw new Error(data?.error || 'Vercel OAuth is not configured on this server.');
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(await authHeaders()),
+      };
+      const resp = await fetch('/api/vercel/connection', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ token: patInput.trim() }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data?.ok) {
+        setErrorMsg(data?.error || 'Could not validate Vercel Personal Access Token.');
+        return;
       }
-      const popup = window.open(data.url, 'appforge_vercel_oauth', 'width=560,height=700');
-      if (!popup) {
-        throw new Error('Popup blocked. Allow popups or use a Personal Access Token below.');
-      }
-    } catch (err: any) {
-      setConnError(err?.message || 'Failed to launch Vercel OAuth.');
+      setPatInput('');
+      setConn((prev) => ({
+        ...prev,
+        connected: true,
+        vercelAccountName: data.vercelAccountName,
+      }));
+    } catch {
+      setErrorMsg('Network error while connecting Vercel account.');
     } finally {
       setConnecting(false);
     }
   };
 
-  const handleConnectPat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const token = patInput.trim();
-    if (!token) return;
-    setConnecting(true);
-    setConnError(null);
+  const handleConnectOAuth = async () => {
+    setErrorMsg(null);
     try {
       const headers = await authHeaders();
-      const resp = await fetch('/api/vercel/connection', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ token }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data?.ok) {
-        throw new Error(data?.error || 'Could not verify Vercel token.');
+      const resp = await fetch('/api/vercel/oauth/url', { headers });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data?.url) {
+        setErrorMsg(data?.error || 'Vercel OAuth is not configured on this server. Use Personal Access Token below.');
+        return;
       }
-      setPatInput('');
-      await fetchConnectionStatus();
-    } catch (err: any) {
-      setConnError(err?.message || 'Vercel token connection failed.');
-    } finally {
-      setConnecting(false);
+      window.open(data.url, 'appforge_vercel_oauth', 'width=600,height=720');
+    } catch {
+      setErrorMsg('Failed to initialize Vercel OAuth.');
     }
   };
 
   const handleDisconnect = async () => {
-    setConnecting(true);
-    setConnError(null);
-    try {
-      const headers = await authHeaders();
-      await fetch('/api/vercel/connection', { method: 'DELETE', headers });
-      setConn((prev) => ({ ...prev, connected: false, vercelUsername: null, authMode: null }));
-    } catch (err: any) {
-      setConnError(err?.message || 'Failed to disconnect.');
-    } finally {
-      setConnecting(false);
-    }
+    setErrorMsg(null);
+    const headers = await authHeaders();
+    await fetch('/api/vercel/connection', { method: 'DELETE', headers });
+    setConn((prev) => ({ ...prev, connected: false, vercelAccountName: undefined }));
   };
 
-  const startPollingDeployment = async (deploymentId: string) => {
-    stopPolling();
+  const startPollingDeployment = (deploymentId: string) => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     pollTimerRef.current = setInterval(async () => {
       try {
         const headers = await authHeaders();
-        const resp = await fetch(`/api/vercel/deployments/${encodeURIComponent(deploymentId)}`, {
-          headers,
-        });
-        const data = await resp.json();
-        if (!resp.ok) return;
-        const readyState = String(data.readyState || 'BUILDING');
-        const url = data.url ? `https://${String(data.url).replace(/^https?:\/\//, '')}` : undefined;
-        setDeployState({ id: deploymentId, readyState, url });
-
-        if (readyState === 'READY') {
-          stopPolling();
-          setDeploying(false);
-          if (url) {
-            onUpdateDeployMeta({ lastDeploymentUrl: url });
+        const resp = await fetch(`/api/vercel/deployments/${encodeURIComponent(deploymentId)}`, { headers });
+        const data = await resp.json().catch(() => null);
+        if (resp.ok && data?.deployment) {
+          setDeployment(data.deployment);
+          if (['READY', 'ERROR', 'CANCELED'].includes(data.deployment.readyState)) {
+            if (pollTimerRef.current) {
+              clearInterval(pollTimerRef.current);
+              pollTimerRef.current = null;
+            }
+            if (data.deployment.readyState === 'READY' && data.deployment.url) {
+              const liveUrl = data.deployment.url.startsWith('http')
+                ? data.deployment.url
+                : `https://${data.deployment.url}`;
+              onUpdateDeploymentMeta?.({
+                lastVercelProjectName: vercelProjectName,
+                lastDeploymentUrl: liveUrl,
+              });
+            }
           }
-        } else if (readyState === 'ERROR' || readyState === 'CANCELED') {
-          stopPolling();
-          setDeploying(false);
-          setDeployState({
-            id: deploymentId,
-            readyState,
-            url,
-            error: data.errorMessage || `Deployment finished with state ${readyState}`,
-          });
         }
       } catch {
-        // Keep polling on transient hiccups
+        // Retry next interval
       }
     }, 3000);
   };
 
   const handleDeploy = async () => {
     setDeploying(true);
-    setDeployState({ readyState: 'QUEUED' });
-    setConnError(null);
+    setErrorMsg(null);
     try {
-      const headers = await authHeaders();
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(await authHeaders()),
+      };
       const resp = await fetch('/api/vercel/deploy', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           project,
           framework,
-          projectName: projectSlug.trim() || safeZipFilename(project.name),
-          target: 'production',
+          vercelProjectName: vercelProjectName.trim() || defaultProjectSlug(project.name),
         }),
       });
-      const data = await resp.json();
-      if (!resp.ok || !data?.ok) {
-        throw new Error(data?.error || 'Vercel deployment failed to start.');
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data?.ok || !data.deployment) {
+        setErrorMsg(data?.error || 'Deployment failed. Check Vercel token permissions.');
+        return;
       }
-      const deploymentId = data.deploymentId;
-      const liveUrl = data.url ? `https://${String(data.url).replace(/^https?:\/\//, '')}` : undefined;
-      onUpdateDeployMeta({
-        lastVercelProjectId: data.vercelProjectId || project.lastVercelProjectId,
-        lastVercelProjectName: data.vercelProjectName || projectSlug,
-        ...(liveUrl ? { lastDeploymentUrl: liveUrl } : {}),
+      setDeployment(data.deployment);
+      const urlWithProto = data.deployment.url?.startsWith('http')
+        ? data.deployment.url
+        : `https://${data.deployment.url}`;
+      onUpdateDeploymentMeta?.({
+        lastVercelProjectId: data.deployment.projectId,
+        lastVercelProjectName: vercelProjectName.trim() || defaultProjectSlug(project.name),
+        lastDeploymentUrl: urlWithProto,
       });
-      setDeployState({
-        id: deploymentId,
-        readyState: data.readyState || 'QUEUED',
-        url: liveUrl,
-      });
-
-      if (data.readyState === 'READY') {
-        setDeploying(false);
-      } else if (deploymentId) {
-        startPollingDeployment(deploymentId);
-      } else {
-        setDeploying(false);
+      if (!['READY', 'ERROR', 'CANCELED'].includes(data.deployment.readyState)) {
+        startPollingDeployment(data.deployment.id);
       }
-    } catch (err: any) {
+    } catch {
+      setErrorMsg('Network error triggering Vercel deployment.');
+    } finally {
       setDeploying(false);
-      setDeployState({ readyState: 'ERROR', error: err?.message || 'Deployment error.' });
     }
   };
 
   const handleAttachDomain = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleaned = domainInput.trim().toLowerCase();
-    if (!cleaned) return;
-    setAddingDomain(true);
-    setDomainStatus(null);
+    if (!domainInput.trim()) return;
+    setDomainBusy(true);
+    setErrorMsg(null);
     try {
-      const headers = await authHeaders();
-      const targetProj = project.lastVercelProjectName || projectSlug || safeZipFilename(project.name);
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(await authHeaders()),
+      };
       const resp = await fetch('/api/vercel/domains', {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          projectNameOrId: targetProj,
-          domain: cleaned,
+          domain: domainInput.trim().toLowerCase(),
+          vercelProjectName: vercelProjectName.trim() || defaultProjectSlug(project.name),
         }),
       });
-      const data = await resp.json();
+      const data = await resp.json().catch(() => null);
       if (!resp.ok || !data?.ok) {
-        throw new Error(data?.error || 'Could not attach custom domain.');
+        setErrorMsg(data?.error || 'Could not attach custom domain.');
+        return;
       }
-      const existing = project.customDomains || [];
-      if (!existing.includes(cleaned)) {
-        onUpdateDeployMeta({ customDomains: [...existing, cleaned] });
-      }
-      const isApex = cleaned.split('.').length === 2;
-      setDomainStatus({
-        domain: cleaned,
+      setDomainResult({
+        domain: data.domain,
         verified: Boolean(data.verified),
-        dnsRecords: [
-          isApex
-            ? { type: 'A', host: '@', value: '76.76.21.21' }
-            : { type: 'CNAME', host: cleaned.split('.')[0], value: 'cname.vercel-dns.com' },
+        dnsRecords: data.dnsRecords || [
+          { type: 'A', name: '@', value: '76.76.21.21' },
+          { type: 'CNAME', name: 'www', value: 'cname.vercel-dns.com' },
         ],
       });
-      setDomainInput('');
-    } catch (err: any) {
-      setDomainStatus({ domain: cleaned, error: err?.message || 'Domain attachment failed.' });
+      const nextDomains = Array.from(new Set([...(project.customDomains || []), data.domain]));
+      onUpdateDeploymentMeta?.({ customDomains: nextDomains });
+    } catch {
+      setErrorMsg('Failed to communicate with domain endpoint.');
     } finally {
-      setAddingDomain(false);
+      setDomainBusy(false);
     }
   };
 
-  const handleVerifyDomain = async (domain: string) => {
+  const handleVerifyDomain = async () => {
+    if (!domainResult?.domain) return;
+    setDomainBusy(true);
+    setErrorMsg(null);
     try {
       const headers = await authHeaders();
-      const targetProj = project.lastVercelProjectName || projectSlug || safeZipFilename(project.name);
       const resp = await fetch(
-        `/api/vercel/domains/${encodeURIComponent(domain)}/verify?projectNameOrId=${encodeURIComponent(targetProj)}`,
+        `/api/vercel/domains/${encodeURIComponent(domainResult.domain)}/verify?projectName=${encodeURIComponent(
+          vercelProjectName.trim() || defaultProjectSlug(project.name)
+        )}`,
         { headers }
       );
-      const data = await resp.json();
-      const isApex = domain.split('.').length === 2;
-      setDomainStatus({
-        domain,
-        verified: Boolean(data?.verified),
-        configuredBy: data?.configuredBy || null,
-        dnsRecords: [
-          isApex
-            ? { type: 'A', host: '@', value: '76.76.21.21' }
-            : { type: 'CNAME', host: domain.split('.')[0], value: 'cname.vercel-dns.com' },
-        ],
-        error: resp.ok ? undefined : data?.error,
-      });
-    } catch (err: any) {
-      setDomainStatus({ domain, error: err?.message || 'Verification check failed.' });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data) {
+        setDomainResult((prev) => (prev ? { ...prev, verified: Boolean(data.verified) } : prev));
+      } else {
+        setErrorMsg(data?.error || 'Domain verification failed.');
+      }
+    } finally {
+      setDomainBusy(false);
     }
   };
 
@@ -358,166 +338,166 @@ export const DeployPanel: React.FC<DeployPanelProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="deploy-panel-title"
+        className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         data-testid="deploy-panel-modal"
-        className="w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+        <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
               <Rocket size={18} />
             </div>
             <div>
               <h2 id="deploy-panel-title" className="text-sm font-semibold text-white">
-                Deploy to Your Vercel Account
+                Deploy to Your Own Vercel Account
               </h2>
               <p className="text-xs text-zinc-400">
-                Direct zero-middleman deployment &amp; custom domain DNS verification for {project.name}
+                Publish {project.name} with custom domains and zero platform lock-in
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close deploy panel"
+            aria-label="Close Vercel Deploy modal"
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
-          {/* Step 1: Firebase Auth Gate */}
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {!user ? (
-            <div className="p-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <ShieldCheck size={16} className="text-blue-400" />
-                <span>Sign in with Google to Enable Cloud &amp; Vercel Deployments</span>
-              </div>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Your Vercel Personal Access Token is AES-256-GCM encrypted server-side per authenticated user and never stored in browser storage.
+            <div className="p-5 rounded-xl border border-zinc-800 bg-zinc-900/50 text-center space-y-3">
+              <ShieldCheck size={28} className="mx-auto text-blue-400" />
+              <h3 className="text-sm font-semibold text-white">Sign In with Google Required</h3>
+              <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                Your Vercel token is encrypted server-side under your Firebase user account and is never exposed to the browser.
               </p>
               {authError && (
-                <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-red-200 text-xs">
+                <p role="alert" className="text-xs text-amber-300">
                   {authError}
-                </div>
+                </p>
               )}
               <button
                 type="button"
                 disabled={signingIn}
-                onClick={signInWithGoogle}
+                onClick={() => void signInWithGoogle()}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white cursor-pointer"
                 data-testid="deploy-google-signin-btn"
-                className="px-4 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs flex items-center gap-2 cursor-pointer transition disabled:opacity-50"
               >
-                {signingIn ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                {signingIn ? <Loader2 size={14} className="animate-spin" /> : null}
                 <span>{signingIn ? 'Signing in...' : 'Sign in with Google'}</span>
               </button>
             </div>
           ) : (
             <>
-              {/* Step 2: Vercel Account Connection */}
-              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 space-y-3">
+              {/* Account Connection Card */}
+              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <KeyRound size={14} className="text-blue-400" />
-                    <span className="font-semibold text-zinc-100">Vercel Account Connection</span>
+                  <div>
+                    <div className="text-xs font-semibold text-white">
+                      Vercel Account Connection
+                    </div>
+                    <div className="text-[11px] text-zinc-400">
+                      {loadingConn
+                        ? 'Checking encrypted connection...'
+                        : conn.connected
+                        ? `Connected as ${conn.vercelAccountName || 'Vercel Creator'}`
+                        : 'Not connected yet'}
+                    </div>
                   </div>
-                  {loadingConn ? (
-                    <span className="text-[11px] text-zinc-400 flex items-center gap-1">
-                      <Loader2 size={12} className="animate-spin" /> Checking...
-                    </span>
-                  ) : conn.connected ? (
-                    <span className="text-[11px] text-emerald-400 font-medium">
-                      Connected {conn.vercelUsername ? `as ${conn.vercelUsername}` : ''}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-zinc-400">Not connected</span>
+                  {conn.connected && (
+                    <button
+                      type="button"
+                      onClick={handleDisconnect}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-200 cursor-pointer"
+                    >
+                      <LogOut size={12} />
+                      <span>Disconnect</span>
+                    </button>
                   )}
                 </div>
 
-                {connError && (
-                  <div className="p-2.5 rounded-lg bg-red-950/40 border border-red-500/30 text-red-200 text-xs">
-                    {connError}
-                  </div>
-                )}
-
-                {conn.connected ? (
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[11px] text-zinc-400">
-                      Auth: {conn.authMode === 'oauth' ? 'Vercel OAuth' : 'Encrypted Personal Access Token'}
-                      {conn.vercelEmail ? ` · ${conn.vercelEmail}` : ''}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={connecting}
-                      onClick={handleDisconnect}
-                      className="px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-red-500/50 text-zinc-300 hover:text-red-300 text-[11px] font-medium flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Link2Off size={12} />
-                      <span>Disconnect</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
+                {!conn.connected && (
+                  <div className="space-y-3 pt-1">
                     {conn.oauthEnabled && (
                       <button
                         type="button"
-                        disabled={connecting}
-                        onClick={handleOAuthConnect}
-                        className="w-full py-2 px-3 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs cursor-pointer transition"
+                        onClick={handleConnectOAuth}
+                        className="w-full py-2 px-3 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition cursor-pointer"
                       >
-                        Connect Vercel Account via OAuth
+                        Connect via Vercel OAuth
                       </button>
                     )}
 
-                    <form onSubmit={handleConnectPat} className="flex items-center gap-2">
-                      <input
-                        type="password"
-                        value={patInput}
-                        onChange={(e) => setPatInput(e.target.value)}
-                        placeholder="Paste Vercel Personal Access Token..."
-                        aria-label="Vercel Personal Access Token"
-                        className="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
-                        data-testid="vercel-pat-input"
-                      />
-                      <button
-                        type="submit"
-                        disabled={connecting || !patInput.trim()}
-                        data-testid="vercel-connect-pat-btn"
-                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-xs cursor-pointer shrink-0"
+                    <form onSubmit={handleConnectPat} className="space-y-2">
+                      <label htmlFor="vercel-pat-input" className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-300">
+                        <KeyRound size={12} />
+                        <span>Personal Access Token (Encrypted AES-256-GCM at rest)</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="vercel-pat-input"
+                          type="password"
+                          value={patInput}
+                          onChange={(e) => setPatInput(e.target.value)}
+                          placeholder="Paste Vercel token from vercel.com/account/tokens"
+                          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+                        />
+                        <button
+                          type="submit"
+                          disabled={connecting || !patInput.trim()}
+                          className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-xs font-semibold text-white cursor-pointer"
+                        >
+                          {connecting ? 'Connecting...' : 'Connect'}
+                        </button>
+                      </div>
+                      <a
+                        href="https://vercel.com/account/tokens"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 underline"
                       >
-                        {connecting ? 'Connecting...' : 'Save Token'}
-                      </button>
+                        <span>Create token on Vercel</span>
+                        <ExternalLink size={11} />
+                      </a>
                     </form>
                   </div>
                 )}
               </div>
 
-              {/* Step 3: Deploy Target Framework */}
+              {/* Target Framework & Deploy */}
               <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 space-y-3">
-                <div className="font-semibold text-zinc-100">Build Target &amp; Deployment</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] text-zinc-400 mb-1">Target Framework</label>
+                    <label htmlFor="deploy-framework-select" className="block text-[11px] font-medium text-zinc-400 mb-1">
+                      Target Framework
+                    </label>
                     <select
+                      id="deploy-framework-select"
                       value={framework}
                       onChange={(e) => setFramework(e.target.value as ExportFramework)}
-                      className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-2.5 py-2 text-xs text-white"
-                      data-testid="deploy-framework-select"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                     >
-                      <option value="react-vite">React + Vite</option>
+                      <option value="html">Static HTML / CSS / JS</option>
+                      <option value="react-vite">React 19 + Vite + TypeScript</option>
                       <option value="nextjs">Next.js App Router</option>
                       <option value="vue">Vue 3 + Vite</option>
-                      <option value="html">Static HTML / CSS / JS</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] text-zinc-400 mb-1">Vercel Project Slug</label>
+                    <label htmlFor="deploy-slug-input" className="block text-[11px] font-medium text-zinc-400 mb-1">
+                      Vercel Project Slug
+                    </label>
                     <input
+                      id="deploy-slug-input"
                       type="text"
-                      value={projectSlug}
-                      onChange={(e) => setProjectSlug(e.target.value)}
-                      className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-2.5 py-2 text-xs font-mono text-white"
+                      value={vercelProjectName}
+                      onChange={(e) => setVercelProjectName(e.target.value)}
+                      placeholder="my-appforge-site"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
                     />
                   </div>
                 </div>
@@ -526,70 +506,54 @@ export const DeployPanel: React.FC<DeployPanelProps> = ({
                   type="button"
                   disabled={!conn.connected || deploying}
                   onClick={handleDeploy}
+                  className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-xs font-semibold text-white flex items-center justify-center gap-2 transition cursor-pointer"
                   data-testid="deploy-trigger-btn"
-                  className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
                 >
                   {deploying ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
-                  <span>
-                    {deploying
-                      ? `Deploying (${deployState?.readyState || 'QUEUED'})...`
-                      : 'Deploy to Vercel'}
-                  </span>
+                  <span>{deploying ? 'Uploading Build Files to Vercel...' : 'Deploy to Your Vercel Account'}</span>
                 </button>
 
-                {(deployState || project.lastDeploymentUrl) && (
-                  <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-950 space-y-2">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-zinc-400">Status</span>
-                      <span className="font-mono text-emerald-400">
-                        {deployState?.readyState || 'READY'}
+                {deployment && (
+                  <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-950 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-zinc-200">
+                        Deployment Status: <span className="text-cyan-300 font-mono">{deployment.readyState}</span>
                       </span>
+                      {deployment.url && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const u = deployment.url.startsWith('http') ? deployment.url : `https://${deployment.url}`;
+                              navigator.clipboard?.writeText(u);
+                              setCopiedUrl(true);
+                              setTimeout(() => setCopiedUrl(false), 1800);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] cursor-pointer"
+                          >
+                            {copiedUrl ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                            <span>{copiedUrl ? 'Copied' : 'Copy URL'}</span>
+                          </button>
+                          <a
+                            href={deployment.url.startsWith('http') ? deployment.url : `https://${deployment.url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[11px]"
+                          >
+                            <span>Visit</span>
+                            <ExternalLink size={11} />
+                          </a>
+                        </div>
+                      )}
                     </div>
-                    {deployState?.error && (
-                      <p className="text-xs text-red-300">{deployState.error}</p>
-                    )}
-                    {(deployState?.url || project.lastDeploymentUrl) && (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={deployState?.url || project.lastDeploymentUrl || ''}
-                          className="flex-1 rounded-lg bg-zinc-900 border border-zinc-800 px-2.5 py-1.5 text-xs font-mono text-zinc-200"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const url = deployState?.url || project.lastDeploymentUrl || '';
-                            if (navigator.clipboard && url) {
-                              navigator.clipboard.writeText(url).catch(() => {});
-                            }
-                            setCopiedUrl(true);
-                            setTimeout(() => setCopiedUrl(false), 1800);
-                          }}
-                          className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-[11px] flex items-center gap-1 cursor-pointer"
-                        >
-                          {copiedUrl ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                          <span>{copiedUrl ? 'Copied' : 'Copy'}</span>
-                        </button>
-                        <a
-                          href={deployState?.url || project.lastDeploymentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] flex items-center gap-1"
-                        >
-                          <ExternalLink size={12} />
-                          <span>Open</span>
-                        </a>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
 
-              {/* Step 4: Custom Domain & DNS */}
+              {/* Custom Domain Attachment */}
               <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-900/40 space-y-3">
-                <div className="flex items-center gap-2 font-semibold text-zinc-100">
-                  <Globe size={14} className="text-blue-400" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                  <Globe size={14} className="text-emerald-400" />
                   <span>Custom Domain &amp; DNS Verification</span>
                 </div>
                 <form onSubmit={handleAttachDomain} className="flex items-center gap-2">
@@ -598,61 +562,55 @@ export const DeployPanel: React.FC<DeployPanelProps> = ({
                     value={domainInput}
                     onChange={(e) => setDomainInput(e.target.value)}
                     placeholder="app.yourdomain.com or yourdomain.com"
-                    className="flex-1 rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
                   />
                   <button
                     type="submit"
-                    disabled={!conn.connected || addingDomain || !domainInput.trim()}
-                    className="px-3.5 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white font-medium text-xs cursor-pointer"
+                    disabled={!conn.connected || domainBusy || !domainInput.trim()}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-xs font-semibold text-white cursor-pointer"
                   >
-                    {addingDomain ? 'Adding...' : 'Add Domain'}
+                    Attach Domain
                   </button>
                 </form>
 
-                {(project.customDomains || []).length > 0 && (
-                  <div className="space-y-1.5">
-                    {(project.customDomains || []).map((dom) => (
-                      <div
-                        key={dom}
-                        className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800"
-                      >
-                        <span className="font-mono text-zinc-200">{dom}</span>
+                {domainResult && (
+                  <div className="p-3 rounded-lg border border-zinc-800 bg-zinc-950 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-zinc-200">{domainResult.domain}</span>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono text-[11px] ${domainResult.verified ? 'text-emerald-400' : 'text-amber-300'}`}>
+                          {domainResult.verified ? 'DNS Verified' : 'DNS Pending'}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => handleVerifyDomain(dom)}
-                          className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] flex items-center gap-1 cursor-pointer"
+                          disabled={domainBusy}
+                          onClick={handleVerifyDomain}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] cursor-pointer"
                         >
-                          <RefreshCw size={11} />
+                          <RefreshCw size={11} className={domainBusy ? 'animate-spin' : ''} />
                           <span>Verify DNS</span>
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {domainStatus && (
-                  <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2 text-[11px]">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-white">{domainStatus.domain}</span>
-                      <span className={domainStatus.verified ? 'text-emerald-400' : 'text-amber-300'}>
-                        {domainStatus.verified ? 'DNS Verified & Active' : 'Pending DNS Propagation'}
-                      </span>
                     </div>
-                    {domainStatus.error && <p className="text-red-300">{domainStatus.error}</p>}
-                    {domainStatus.dnsRecords && (
-                      <div className="font-mono text-[10px] text-zinc-300 space-y-1 bg-zinc-900/70 p-2 rounded-lg">
-                        {domainStatus.dnsRecords.map((rec, i) => (
-                          <div key={i}>
-                            {rec.type} · Host: <span className="text-white">{rec.host}</span> → Value:{' '}
-                            <span className="text-blue-300">{rec.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <div className="space-y-1 text-[11px] font-mono text-zinc-400">
+                      {domainResult.dnsRecords.map((rec, idx) => (
+                        <div key={idx} className="flex items-center justify-between px-2 py-1 rounded bg-zinc-900">
+                          <span>{rec.type} · {rec.name}</span>
+                          <span className="text-zinc-200">{rec.value}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             </>
+          )}
+
+          {errorMsg && (
+            <div role="alert" className="p-3 rounded-xl border border-amber-500/40 bg-amber-950/30 text-xs text-amber-200 flex items-center gap-2">
+              <AlertCircle size={14} className="shrink-0 text-amber-400" />
+              <span>{errorMsg}</span>
+            </div>
           )}
         </div>
       </div>

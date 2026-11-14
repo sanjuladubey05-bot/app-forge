@@ -37,9 +37,9 @@ interface CanvasAreaProps {
   zoom: number;
   canvasBg: string;
   canvasPadding: string;
-  themeTokens?: ThemeTokens;
   snapToGrid?: boolean;
   showGuides?: boolean;
+  themeTokens?: ThemeTokens;
   onToggleSnapToGrid?: () => void;
   onToggleGuides?: () => void;
 }
@@ -58,9 +58,9 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
   zoom,
   canvasBg,
   canvasPadding,
-  themeTokens,
   snapToGrid = true,
   showGuides = false,
+  themeTokens,
   onToggleSnapToGrid,
   onToggleGuides,
 }) => {
@@ -595,15 +595,22 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
             </div>
           );
 
-        case 'widget3d':
+        case 'widget3d': {
+          const cfg = props.widget3d || {
+            presetId: 'webgl-orbital-prism' as const,
+            presetMode: 'threejs-webgl' as const,
+            title: 'Interactive 3D Widget',
+            heightPx: 280,
+          };
           return (
             <Widget3DSandbox
-              config={props.widget3d}
+              config={cfg}
               themeTokens={themeTokens}
               interactive={false}
               onSelect={() => onSelectElement(element.id)}
             />
           );
+        }
 
         default:
           return null;
@@ -847,7 +854,11 @@ export const CanvasArea: React.FC<CanvasAreaProps> = ({
             e.stopPropagation();
             triggerQuickAdd(e.clientX, e.clientY);
           }}
-          style={{ backgroundColor: canvasBg }}
+          style={{
+            backgroundColor: themeTokens?.backgroundColor || canvasBg,
+            color: themeTokens?.textColor,
+            fontFamily: themeTokens?.fontFamily ? `'${themeTokens.fontFamily}', system-ui, sans-serif` : undefined,
+          }}
           className={`relative w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4`}
           data-testid="canvas-device-frame"
           data-empty-canvas="true"

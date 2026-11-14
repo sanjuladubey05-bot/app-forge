@@ -17,7 +17,6 @@ import {
   ShoppingBag,
   Box,
   Cloud,
-  CloudDownload,
   LogIn,
   LogOut,
   Loader2
@@ -25,7 +24,6 @@ import {
 import { Project } from '../types/editor';
 import { ComplianceTabId } from './ComplianceHubModal';
 import { useAuth } from '../contexts/AuthContext';
-import { listUserCloudProjects, saveProjectToCloud } from '../utils/cloud-sync';
 
 interface DashboardProps {
   projects: Project[];
@@ -35,8 +33,8 @@ interface DashboardProps {
   onDuplicateProject: (projectId: string) => void;
   onQuickCreate: (templateId: string) => void;
   onOpenCompliance?: (tab?: ComplianceTabId) => void;
-  onBackToLanding?: () => void;
-  onImportCloudProjects?: (cloudProjects: Project[]) => void;
+  onOpenLanding?: () => void;
+  onLoadCloudProjects?: () => Promise<number>;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -47,14 +45,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDuplicateProject,
   onQuickCreate,
   onOpenCompliance,
-  onBackToLanding,
-  onImportCloudProjects,
+  onOpenLanding,
+  onLoadCloudProjects,
 }) => {
   const { user, signingIn, signInWithGoogle, signOut } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
-  const [cloudMessage, setCloudMessage] = useState<string | null>(null);
+  const [cloudNotice, setCloudNotice] = useState<string | null>(null);
 
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -131,54 +129,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       icon: FolderGit2 
     },
     { 
+      id: 'linkinbio', 
+      name: '3D Link-in-Bio', 
+      desc: 'Creator bio hub with WebGL hero card', 
+      icon: Box 
+    },
+    { 
       id: 'card', 
       name: 'Product Card', 
       desc: 'Featured showcase card layout', 
       icon: Layers 
     },
-    {
-      id: 'linkinbio',
-      name: '3D Link-in-Bio',
-      desc: 'Mobile creator profile with live 3D widget',
-      icon: Box
-    },
   ];
-
-  const handleSyncAllToCloud = async () => {
-    if (!user) return;
-    setCloudBusy(true);
-    setCloudMessage(null);
-    try {
-      for (const proj of projects) {
-        await saveProjectToCloud(proj, user.uid);
-      }
-      setCloudMessage(`Synced ${projects.length} project(s) to Firestore.`);
-    } catch (err: any) {
-      setCloudMessage(err?.message || 'Cloud sync failed.');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
-  const handlePullFromCloud = async () => {
-    if (!user) return;
-    setCloudBusy(true);
-    setCloudMessage(null);
-    try {
-      const cloudList = await listUserCloudProjects(user.uid);
-      const imported = cloudList.map((c) => c.project).filter(Boolean);
-      onImportCloudProjects?.(imported);
-      setCloudMessage(
-        cloudList.length > 0
-          ? `Loaded ${cloudList.length} project(s) from Firestore.`
-          : 'No saved cloud projects yet.'
-      );
-    } catch (err: any) {
-      setCloudMessage(err?.message || 'Could not load cloud projects.');
-    } finally {
-      setCloudBusy(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans">
@@ -191,36 +153,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {/* Top Navigation */}
       <header className="h-13 border-b border-zinc-800/80 bg-zinc-950 px-6 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-3">
-          {onBackToLanding ? (
-            <button
-              type="button"
-              onClick={onBackToLanding}
-              className="flex items-center gap-2.5 text-left hover:opacity-90 transition cursor-pointer"
-              title="Back to AppForge Home"
-            >
-              <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200 font-bold text-xs tracking-wider">
-                AF
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-zinc-100 text-sm tracking-tight">AppForge</span>
-                <span className="text-zinc-400 text-xs font-normal">· Studio</span>
-              </div>
-            </button>
-          ) : (
-            <>
-              <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200 font-bold text-xs tracking-wider">
-                AF
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-zinc-100 text-sm tracking-tight">AppForge</span>
-                <span className="text-zinc-400 text-xs font-normal">· Studio</span>
-              </div>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={onOpenLanding}
+            className="flex items-center gap-2.5 text-left cursor-pointer hover:opacity-90 transition"
+            title="Return to AppForge Overview"
+          >
+            <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-700/80 flex items-center justify-center text-zinc-200 font-bold text-xs tracking-wider">
+              AF
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-zinc-100 text-sm tracking-tight">AppForge</span>
+              <span className="text-zinc-400 text-xs font-normal">· Studio</span>
+            </div>
+          </button>
         </div>
 
-        {/* Search, Auth & New Project CTA */}
-        <div className="flex items-center gap-2.5">
+        {/* Search & New Project CTA */}
+        <div className="flex items-center gap-3">
           <div className="relative w-56 hidden md:block">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
             <input
@@ -234,33 +184,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {user ? (
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                disabled={cloudBusy}
-                onClick={handleSyncAllToCloud}
-                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 text-xs font-medium transition cursor-pointer"
-                title="Save all workspace projects to Firestore"
-              >
-                {cloudBusy ? <Loader2 size={12} className="animate-spin" /> : <Cloud size={12} />}
-                <span>Sync Cloud</span>
-              </button>
-              <button
-                type="button"
-                disabled={cloudBusy}
-                onClick={handlePullFromCloud}
-                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition cursor-pointer"
-                title="Load projects from Firestore"
-              >
-                <CloudDownload size={12} />
-                <span>Load Cloud</span>
-              </button>
+            <div className="hidden sm:flex items-center gap-2">
+              {onLoadCloudProjects && (
+                <button
+                  type="button"
+                  disabled={cloudBusy}
+                  onClick={async () => {
+                    setCloudBusy(true);
+                    setCloudNotice(null);
+                    try {
+                      const count = await onLoadCloudProjects();
+                      setCloudNotice(`Synced ${count} cloud ${count === 1 ? 'project' : 'projects'}.`);
+                    } catch {
+                      setCloudNotice('Cloud fetch failed.');
+                    } finally {
+                      setCloudBusy(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs transition cursor-pointer"
+                  data-testid="dashboard-cloud-load-btn"
+                >
+                  {cloudBusy ? <Loader2 size={13} className="animate-spin text-blue-400" /> : <Cloud size={13} className="text-emerald-400" />}
+                  <span>Sync Cloud</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void signOut()}
-                className="p-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
-                title={`Signed in as ${user.email || 'Google User'} — Click to sign out`}
-                aria-label="Sign out"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white text-xs transition cursor-pointer"
+                title={`Signed in as ${user.email}`}
               >
                 <LogOut size={13} />
               </button>
@@ -270,11 +222,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
               type="button"
               disabled={signingIn}
               onClick={() => void signInWithGoogle()}
-              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs font-medium transition cursor-pointer"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 text-xs transition cursor-pointer"
               data-testid="dashboard-signin-btn"
             >
               <LogIn size={13} />
-              <span>{signingIn ? 'Signing in...' : 'Sign in with Google'}</span>
+              <span>{signingIn ? 'Signing in...' : 'Google Sign-In'}</span>
             </button>
           )}
 
@@ -288,16 +240,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </button>
         </div>
       </header>
-      {cloudMessage && (
-        <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-2 text-xs text-emerald-300 flex items-center justify-between">
-          <span>{cloudMessage}</span>
-          <button
-            type="button"
-            onClick={() => setCloudMessage(null)}
-            className="text-zinc-400 hover:text-white text-[11px] cursor-pointer"
-          >
-            Dismiss
-          </button>
+      {cloudNotice && (
+        <div className="bg-zinc-900 border-b border-zinc-800 px-6 py-1.5 text-[11px] text-emerald-300 text-right">
+          {cloudNotice}
         </div>
       )}
 
@@ -324,7 +269,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="text-[11px] font-medium text-zinc-400 mb-2.5">
               Choose a Starting Point
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
               {starters.map((starter) => {
                 const Icon = starter.icon;
                 return (

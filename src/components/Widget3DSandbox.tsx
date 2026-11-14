@@ -1,27 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { ThemeTokens, Widget3DConfig } from '../types/editor';
 import { buildSandboxed3dSrcDoc } from '../utils/three-presets';
 
 interface Widget3DSandboxProps {
-  config?: Widget3DConfig;
+  config: Widget3DConfig;
   themeTokens?: ThemeTokens;
   interactive?: boolean;
-  onSelect?: () => void;
+  onSelect?: (e: React.MouseEvent) => void;
   onResetPreset?: () => void;
   className?: string;
 }
-
-const DEFAULT_CONFIG: Widget3DConfig = {
-  presetId: 'webgl-orbital-prism',
-  presetMode: 'threejs-webgl',
-  title: 'Interactive 3D Showcase',
-  subtitle: 'Drag to orbit · Procedural WebGL scene',
-  accentColor: '#38bdf8',
-  heightPx: 280,
-  autoRotate: true,
-  interactiveTilt: true,
-};
 
 export const Widget3DSandbox: React.FC<Widget3DSandboxProps> = ({
   config,
@@ -31,14 +20,12 @@ export const Widget3DSandbox: React.FC<Widget3DSandboxProps> = ({
   onResetPreset,
   className = '',
 }) => {
-  const effectiveConfig = config || DEFAULT_CONFIG;
-  const heightPx = Math.max(180, Math.min(560, effectiveConfig.heightPx || 280));
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const heightPx = Math.max(160, Math.min(640, Number(config.heightPx) || 280));
 
   const srcDoc = useMemo(
-    () => buildSandboxed3dSrcDoc(effectiveConfig, themeTokens),
-    [effectiveConfig, themeTokens]
+    () => buildSandboxed3dSrcDoc(config, themeTokens),
+    [config, themeTokens]
   );
 
   useEffect(() => {
@@ -46,53 +33,51 @@ export const Widget3DSandbox: React.FC<Widget3DSandboxProps> = ({
   }, [srcDoc]);
 
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (!iframeRef.current || event.source !== iframeRef.current.contentWindow) return;
-      const payload = event.data;
-      if (payload && typeof payload === 'object' && payload.type === 'AF_3D_ERROR') {
-        setRuntimeError(String(payload.message || '3D scene runtime error detected.'));
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'AF_3D_ERROR') {
+        const msg = typeof event.data.message === 'string' ? event.data.message : '3D sandbox runtime error.';
+        setRuntimeError(msg);
       }
     };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   return (
     <div
-      className={`relative w-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 ${className}`}
+      className={`relative w-full overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 ${className}`}
+      style={{ height: `${heightPx}px` }}
       data-testid="widget3d-sandbox"
     >
       <iframe
-        ref={iframeRef}
-        title={effectiveConfig.title || 'AppForge 3D Widget'}
+        title={config.title || 'Interactive 3D Widget'}
         sandbox="allow-scripts"
         srcDoc={srcDoc}
-        style={{ height: `${heightPx}px` }}
-        className="w-full border-0 block bg-zinc-950"
+        className="w-full h-full border-0 block bg-transparent"
       />
 
-      {!interactive && onSelect && (
+      {!interactive && (
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            onSelect();
+            onSelect?.(e);
           }}
-          aria-label={`Select 3D widget: ${effectiveConfig.title}`}
+          aria-label={`Select 3D widget: ${config.title || 'Interactive 3D Widget'}`}
           data-testid="canvas-widget3d-overlay"
-          className="absolute inset-0 z-10 w-full h-full bg-transparent cursor-pointer focus:outline-none"
+          className="absolute inset-0 z-10 w-full h-full bg-transparent cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-500"
         />
       )}
 
       {runtimeError && (
         <div
           role="alert"
-          className="absolute inset-x-3 bottom-3 z-20 p-2.5 rounded-lg bg-red-950/95 border border-red-500/40 text-xs text-red-100 flex items-center justify-between gap-2 shadow-lg"
+          className="absolute inset-x-3 bottom-3 z-20 flex items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-zinc-950/95 px-3 py-2 text-xs text-amber-200 shadow-lg"
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <AlertTriangle size={14} className="text-red-400 shrink-0" />
+          <span className="flex items-center gap-1.5 truncate">
+            <AlertTriangle size={14} className="shrink-0 text-amber-400" />
             <span className="truncate">{runtimeError}</span>
-          </div>
+          </span>
           {onResetPreset && (
             <button
               type="button"
@@ -101,7 +86,7 @@ export const Widget3DSandbox: React.FC<Widget3DSandboxProps> = ({
                 setRuntimeError(null);
                 onResetPreset();
               }}
-              className="px-2 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-[11px] font-medium flex items-center gap-1 shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 text-[11px] font-medium shrink-0 cursor-pointer"
             >
               <RotateCcw size={11} />
               <span>Reset Preset</span>

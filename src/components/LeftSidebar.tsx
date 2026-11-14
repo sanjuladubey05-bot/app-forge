@@ -125,6 +125,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [focusedItemIndex, setFocusedItemIndex] = useState<number>(0);
   const [sectionSearch, setSectionSearch] = useState('');
+  const [uploadingAsset, setUploadingAsset] = useState(false);
+  const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [newPageName, setNewPageName] = useState('');
   const [isCreatingPage, setIsCreatingPage] = useState(false);
@@ -132,9 +134,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   const [editingPageTitle, setEditingPageTitle] = useState('');
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [editingElementName, setEditingElementName] = useState('');
-  const [uploadingAsset, setUploadingAsset] = useState(false);
-  const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
-  const [uploadedAssets, setUploadedAssets] = useState<{ url: string; name: string }[]>([]);
 
   const activePage = getActivePage(project);
 
@@ -272,14 +271,14 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     },
     {
       id: '3d',
-      name: '3D & Spatial',
+      name: '3D Interactive',
       items: [
         {
           type: 'widget3d' as ComponentType,
           title: '3D UI Widget',
-          desc: 'Interactive CSS 3D or WebGL scene',
+          desc: 'Sandboxed CSS 3D tilt card or WebGL scene',
           icon: Box,
-          tags: ['3d', 'webgl', 'threejs', 'interactive', 'spatial', 'prism', 'card']
+          tags: ['3d', 'webgl', 'threejs', 'interactive', 'prism', 'hero', 'spatial'],
         },
       ],
     },
@@ -603,11 +602,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <button
                     type="button"
                     onClick={onOpenAi3DModal}
-                    data-testid="sidebar-open-3d-studio-btn"
-                    className="w-full mt-1 py-1.5 px-2.5 rounded-lg border border-blue-500/30 bg-blue-950/30 hover:bg-blue-900/40 text-blue-300 hover:text-white text-[11px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    className="w-full py-1.5 px-2.5 rounded-lg border border-cyan-500/30 bg-cyan-950/30 hover:bg-cyan-900/40 text-cyan-300 hover:text-white text-[11px] font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    data-testid="sidebar-open-ai3d-btn"
                   >
-                    <Sparkles size={12} className="text-blue-400" />
-                    <span>Open AI 3D Studio &amp; Presets</span>
+                    <Sparkles size={12} />
+                    <span>Open 3D &amp; AI Scene Studio</span>
                   </button>
                 )}
               </div>
@@ -1197,9 +1196,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       >
                         <option value="fade">Fade</option>
                         <option value="slide-left">Slide Left</option>
-                        <option value="slide-right">Slide Right</option>
                         <option value="slide-up">Slide Up</option>
-                        <option value="scale">Zoom Scale</option>
                         <option value="none">Instant</option>
                       </select>
                     </div>
@@ -1260,30 +1257,30 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
             <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
               {/* Cloud Image Upload */}
-              <div className="p-2.5 rounded-xl border border-zinc-800 bg-zinc-900/50 space-y-2">
+              <div className="p-2.5 rounded-xl border border-zinc-800 bg-zinc-900/60 space-y-2" data-testid="cloud-asset-upload-box">
                 <div className="text-[10px] font-semibold text-zinc-300 uppercase tracking-wider">
-                  Cloud Media Upload (Max 2MB)
+                  Cloud Image Upload (Max 2MB)
                 </div>
                 {!user ? (
                   <button
                     type="button"
-                    onClick={signInWithGoogle}
-                    className="w-full py-1.5 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-[11px] font-medium cursor-pointer transition"
+                    onClick={() => void signInWithGoogle()}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold cursor-pointer"
                   >
-                    Sign in with Google to Upload Media
+                    Sign in with Google to Upload
                   </button>
                 ) : (
-                  <label className="w-full py-2 px-3 rounded-lg border border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950 text-zinc-200 text-[11px] font-medium flex items-center justify-center gap-1.5 cursor-pointer transition">
+                  <label className="w-full py-2 px-2.5 rounded-lg border border-dashed border-zinc-700 hover:border-blue-500 bg-zinc-950 text-[11px] text-zinc-300 flex items-center justify-center gap-1.5 cursor-pointer transition">
                     {uploadingAsset ? <Loader2 size={13} className="animate-spin text-blue-400" /> : <Upload size={13} className="text-blue-400" />}
-                    <span>{uploadingAsset ? 'Uploading...' : 'Upload Image (Cloud)'}</span>
+                    <span>{uploadingAsset ? 'Uploading...' : 'Upload PNG / JPG / WebP / SVG'}</span>
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                      className="sr-only"
+                      className="hidden"
                       disabled={uploadingAsset}
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
-                        e.target.value = '';
+                        e.currentTarget.value = '';
                         if (!file) return;
                         if (file.size > 2 * 1024 * 1024) {
                           setUploadFeedback('File exceeds 2MB limit.');
@@ -1292,19 +1289,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         setUploadingAsset(true);
                         setUploadFeedback(null);
                         try {
-                          const token = await getIdToken();
-                          if (!token) throw new Error('Authentication token unavailable.');
-                          const base64Data = await new Promise<string>((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => resolve(String(reader.result || ''));
-                            reader.onerror = () => reject(new Error('Failed to read file.'));
-                            reader.readAsDataURL(file);
+                          const dataUrl = await new Promise<string>((resolve, reject) => {
+                            const r = new FileReader();
+                            r.onload = () => resolve(String(r.result || ''));
+                            r.onerror = () => reject(new Error('Read failed'));
+                            r.readAsDataURL(file);
                           });
+                          const base64Data = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+                          const idToken = await getIdToken();
                           const resp = await fetch('/api/assets/upload', {
                             method: 'POST',
                             headers: {
                               'Content-Type': 'application/json',
-                              Authorization: `Bearer ${token}`,
+                              ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
                             },
                             body: JSON.stringify({
                               filename: file.name,
@@ -1313,19 +1310,19 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                               projectId: project.id,
                             }),
                           });
-                          const data = await resp.json();
-                          if (!resp.ok || !data?.ok || !data?.asset?.url) {
-                            throw new Error(data?.error || 'Upload failed.');
+                          const data = await resp.json().catch(() => null);
+                          if (!resp.ok || !data?.ok || !data.asset?.url) {
+                            setUploadFeedback(data?.error || 'Upload failed.');
+                            return;
                           }
-                          setUploadedAssets((prev) => [{ url: data.asset.url, name: file.name }, ...prev]);
                           onAddComponent('image', {
                             imageUrl: data.asset.url,
                             imageAlt: file.name.replace(/\.[^.]+$/, ''),
-                            imageLicense: 'User uploaded asset',
+                            imageLicense: 'Uploaded User Asset',
                           });
-                          setUploadFeedback(`Uploaded ${file.name}`);
-                        } catch (err: any) {
-                          setUploadFeedback(err?.message || 'Cloud upload failed.');
+                          setUploadFeedback(`Inserted ${file.name}`);
+                        } catch {
+                          setUploadFeedback('Network error during upload.');
                         } finally {
                           setUploadingAsset(false);
                         }
@@ -1334,27 +1331,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   </label>
                 )}
                 {uploadFeedback && (
-                  <p className="text-[10px] text-blue-300">{uploadFeedback}</p>
-                )}
-                {uploadedAssets.length > 0 && (
-                  <div className="space-y-1 pt-1">
-                    {uploadedAssets.map((a) => (
-                      <button
-                        key={a.url}
-                        type="button"
-                        onClick={() =>
-                          onAddComponent('image', {
-                            imageUrl: a.url,
-                            imageAlt: a.name,
-                            imageLicense: 'User uploaded asset',
-                          })
-                        }
-                        className="w-full text-left px-2 py-1 rounded bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-[10px] text-zinc-300 truncate cursor-pointer"
-                      >
-                        + {a.name}
-                      </button>
-                    ))}
-                  </div>
+                  <p className="text-[10px] text-zinc-400">{uploadFeedback}</p>
                 )}
               </div>
 

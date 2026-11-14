@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Copy,
@@ -8,8 +8,8 @@ import {
   FileJson,
   Code,
   Archive,
+  FolderArchive,
   FolderTree,
-  FileText,
 } from 'lucide-react';
 import { ExportFramework, Project } from '../types/editor';
 import { exportProjectToHtml, exportProjectToJson } from '../utils/project-engine';
@@ -19,6 +19,7 @@ import {
   exportFrameworkAsZipBlob,
   exportProjectAsZipBlob,
   generateReactBundleFiles,
+  getZipManifestPaths,
   safeZipFilename,
 } from '../utils/zip-exporter';
 
@@ -28,36 +29,34 @@ interface ExportModalProps {
   project: Project;
 }
 
-const FRAMEWORK_TARGETS: { id: ExportFramework; label: string; hint: string }[] = [
-  { id: 'react-vite', label: 'React + Vite', hint: 'TypeScript TSX components + Vite config' },
-  { id: 'nextjs', label: 'Next.js App Router', hint: 'App Router pages + Metadata SEO' },
-  { id: 'vue', label: 'Vue 3 + Vite', hint: 'SFC views + reactive routing' },
-  { id: 'html', label: 'HTML / CSS / JS', hint: 'Zero-build multi-page static site' },
+const FRAMEWORK_OPTIONS: Array<{ id: ExportFramework; label: string }> = [
+  { id: 'html', label: 'HTML/CSS/JS' },
+  { id: 'react-vite', label: 'React + Vite' },
+  { id: 'nextjs', label: 'Next.js App Router' },
+  { id: 'vue', label: 'Vue 3 + Vite' },
 ];
 
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, project }) => {
-  const [activeTab, setActiveTab] = useState<'zip' | 'html' | 'react' | 'forge' | 'json'>('zip');
+  const [activeTab, setActiveTab] = useState<'framework' | 'zip' | 'html' | 'react' | 'forge' | 'json'>('framework');
   const [targetFramework, setTargetFramework] = useState<ExportFramework>('react-vite');
   const [selectedFilePath, setSelectedFilePath] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [isBundlingZip, setIsBundlingZip] = useState(false);
 
-  const htmlContent = useMemo(() => exportProjectToHtml(project), [project]);
-  const jsonContent = useMemo(() => exportProjectToJson(project), [project]);
-  const forgeJsonContent = useMemo(() => JSON.stringify(projectToForgeJson(project), null, 2), [project]);
-  const reactFiles = useMemo(() => generateReactBundleFiles(project), [project]);
   const compiledBundle = useMemo(
     () => compileProjectForFramework(project, targetFramework),
     [project, targetFramework]
   );
-
   const filePaths = useMemo(() => Object.keys(compiledBundle.files), [compiledBundle]);
+  const activeFilePath = filePaths.includes(selectedFilePath)
+    ? selectedFilePath
+    : compiledBundle.entryFile || filePaths[0] || '';
 
-  useEffect(() => {
-    if (!filePaths.includes(selectedFilePath)) {
-      setSelectedFilePath(compiledBundle.entryFile || filePaths[0] || '');
-    }
-  }, [compiledBundle.entryFile, filePaths, selectedFilePath]);
+  const htmlContent = useMemo(() => exportProjectToHtml(project), [project]);
+  const jsonContent = useMemo(() => exportProjectToJson(project), [project]);
+  const forgeJsonContent = useMemo(() => JSON.stringify(projectToForgeJson(project), null, 2), [project]);
+  const reactFiles = useMemo(() => generateReactBundleFiles(project), [project]);
+  const zipManifest = useMemo(() => getZipManifestPaths(project), [project]);
 
   if (!isOpen) return null;
 
@@ -67,18 +66,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
     .map(([filePath, code]) => `// ===== ${filePath} =====\n${code}`)
     .join('\n');
 
-  const currentFileCode = compiledBundle.files[selectedFilePath] || '';
-
   const currentSnippet =
-    activeTab === 'zip'
-      ? currentFileCode
+    activeTab === 'framework'
+      ? compiledBundle.files[activeFilePath] || ''
       : activeTab === 'html'
       ? htmlContent
       : activeTab === 'forge'
       ? forgeJsonContent
       : activeTab === 'json'
       ? jsonContent
-      : reactContent;
+      : activeTab === 'react'
+      ? reactContent
+      : zipManifest.join('\n');
 
   const handleCopy = () => {
     navigator.clipboard.writeText(currentSnippet);
@@ -86,7 +85,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownloadTargetZip = async () => {
+  const handleDownloadFrameworkZip = async () => {
     setIsBundlingZip(true);
     try {
       const blob = await exportFrameworkAsZipBlob(project, targetFramework);
@@ -101,7 +100,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
     }
   };
 
-  const handleDownloadLegacyZip = async () => {
+  const handleDownloadZip = async () => {
     setIsBundlingZip(true);
     try {
       const blob = await exportProjectAsZipBlob(project);
@@ -117,8 +116,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
   };
 
   const handleDownload = async () => {
+    if (activeTab === 'framework') {
+      await handleDownloadFrameworkZip();
+      return;
+    }
     if (activeTab === 'zip') {
-      await handleDownloadTargetZip();
+      await handleDownloadZip();
       return;
     }
 
@@ -148,7 +151,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
         role="dialog"
         aria-modal="true"
         aria-labelledby="export-modal-title"
-        className="w-full max-w-5xl bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[680px] max-h-[92vh] animate-in fade-in zoom-in-95 duration-150"
+        className="w-full max-w-5xl bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[680px] max-h-[90vh] animate-in fade-in zoom-in-95 duration-150"
         data-testid="export-modal"
       >
         {/* Header */}
@@ -156,10 +159,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
           <div>
             <h2 id="export-modal-title" className="text-sm font-semibold text-zinc-100 flex items-center gap-2">
               <FileCode size={16} className="text-blue-400" />
-              <span>Multi-Framework Code Compiler &amp; Export</span>
+              <span>Export Multi-Framework Code &amp; Bundles</span>
             </h2>
             <p className="text-xs text-zinc-400 mt-0.5">
-              HTML/CSS/JS, React + Vite, Next.js App Router, Vue 3, and Forge JSON Schema for {project.name}
+              HTML, React + Vite, Next.js App Router, Vue 3, and Forge Schema for {project.name}
             </p>
           </div>
 
@@ -170,7 +173,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-white transition cursor-pointer"
             >
               {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-              <span>{copied ? 'Copied!' : activeTab === 'zip' ? 'Copy File' : 'Copy'}</span>
+              <span>{copied ? 'Copied!' : activeTab === 'framework' ? 'Copy File' : 'Copy'}</span>
             </button>
 
             <button
@@ -182,10 +185,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
             >
               <Download size={13} />
               <span>
-                {activeTab === 'zip'
+                {activeTab === 'framework'
                   ? isBundlingZip
                     ? 'Packing ZIP...'
                     : `Download ${targetFramework} .ZIP`
+                  : activeTab === 'zip'
+                  ? isBundlingZip
+                    ? 'Packing ZIP...'
+                    : 'Download Full .ZIP'
                   : 'Download File'}
               </span>
             </button>
@@ -205,6 +212,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
         <div className="flex items-center overflow-x-auto px-6 border-b border-zinc-800 bg-zinc-950/40 text-xs shrink-0">
           <button
             type="button"
+            onClick={() => setActiveTab('framework')}
+            className={`flex items-center gap-1.5 py-2.5 px-3 border-b-2 font-medium whitespace-nowrap transition cursor-pointer ${
+              activeTab === 'framework'
+                ? 'border-blue-500 text-blue-400 font-semibold'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+            data-testid="export-tab-framework"
+          >
+            <FolderTree size={13} />
+            <span>Framework Target ({filePaths.length} files)</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('zip')}
             className={`flex items-center gap-1.5 py-2.5 px-3 border-b-2 font-medium whitespace-nowrap transition cursor-pointer ${
               activeTab === 'zip'
@@ -214,7 +234,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
             data-testid="export-tab-zip"
           >
             <Archive size={13} />
-            <span>Framework Bundle &amp; ZIP</span>
+            <span>Multi-Page ZIP Archive</span>
           </button>
           <button
             type="button"
@@ -271,74 +291,104 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
         </div>
 
         {/* Content Box */}
-        {activeTab === 'zip' ? (
+        {activeTab === 'framework' ? (
           <div className="flex-1 flex flex-col min-h-0 bg-zinc-950">
-            {/* 4-Framework Switcher Bar */}
-            <div className="px-6 py-3 border-b border-zinc-800 bg-zinc-900/40 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Target export framework">
-                {FRAMEWORK_TARGETS.map((fw) => (
+            {/* Framework Switcher Bar */}
+            <div className="px-4 py-2.5 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2 bg-zinc-900/50">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {FRAMEWORK_OPTIONS.map((fw) => (
                   <button
                     key={fw.id}
                     type="button"
-                    onClick={() => setTargetFramework(fw.id)}
-                    data-testid={`export-framework-${fw.id}`}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
+                    onClick={() => {
+                      setTargetFramework(fw.id);
+                      setSelectedFilePath('');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
                       targetFramework === fw.id
-                        ? 'border-blue-500 bg-blue-600/20 text-blue-300 font-semibold'
-                        : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-white hover:border-zinc-700'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white'
                     }`}
+                    data-testid={`export-fw-${fw.id}`}
                   >
                     {fw.label}
                   </button>
                 ))}
               </div>
-
-              <button
-                type="button"
-                onClick={handleDownloadLegacyZip}
-                disabled={isBundlingZip}
-                className="text-[11px] text-zinc-400 hover:text-white underline cursor-pointer"
-              >
-                Download Combined Legacy ZIP
-              </button>
+              <span className="text-[11px] font-mono text-zinc-400">
+                Vercel Preset: {compiledBundle.vercelPreset || 'static'}
+              </span>
             </div>
 
-            {/* Interactive File Tree + Code Viewer */}
-            <div className="flex-1 flex min-h-0 overflow-hidden">
-              <div
-                className="w-64 border-r border-zinc-800 bg-zinc-950 overflow-y-auto p-3 space-y-1 shrink-0"
-                data-testid="export-file-tree"
-              >
-                <div className="flex items-center gap-1.5 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                  <FolderTree size={12} className="text-blue-400" />
-                  <span>Files ({filePaths.length})</span>
+            {/* File Tree + Code Viewer */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 min-h-0">
+              <div className="md:col-span-4 border-b md:border-b-0 md:border-r border-zinc-800 overflow-y-auto p-3 space-y-1 bg-zinc-900/30">
+                <div className="px-2 pb-1 text-[10px] font-mono uppercase text-zinc-500">
+                  Generated File Tree
                 </div>
                 {filePaths.map((fp) => (
                   <button
                     key={fp}
                     type="button"
                     onClick={() => setSelectedFilePath(fp)}
-                    data-testid={`export-file-${fp}`}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-mono flex items-center gap-2 transition cursor-pointer ${
-                      selectedFilePath === fp
-                        ? 'bg-blue-600/20 text-blue-300 border border-blue-500/30'
-                        : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 border border-transparent'
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg font-mono text-xs truncate transition cursor-pointer ${
+                      fp === activeFilePath
+                        ? 'bg-blue-600/20 border border-blue-500/40 text-blue-300'
+                        : 'text-zinc-300 hover:bg-zinc-800/70'
                     }`}
+                    data-testid={`export-file-${fp}`}
                   >
-                    <FileText size={12} className="shrink-0 opacity-75" />
-                    <span className="truncate">{fp}</span>
+                    {fp}
                   </button>
                 ))}
               </div>
-
-              <div className="flex-1 bg-zinc-950 p-4 overflow-auto font-mono text-xs text-zinc-300 leading-relaxed">
-                <div className="mb-2 pb-2 border-b border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
-                  <span>{selectedFilePath}</span>
-                  <span>
-                    Vercel preset: {compiledBundle.vercelPreset || 'static'}
-                  </span>
+              <div className="md:col-span-8 overflow-auto p-4 font-mono text-xs text-zinc-200 leading-relaxed">
+                <div className="text-[11px] text-zinc-400 pb-2 mb-2 border-b border-zinc-800">
+                  {activeFilePath}
                 </div>
-                <pre className="whitespace-pre">{currentFileCode}</pre>
+                <pre className="whitespace-pre">{currentSnippet}</pre>
+              </div>
+            </div>
+          </div>
+        ) : activeTab === 'zip' ? (
+          <div className="flex-1 bg-zinc-950 p-6 overflow-auto space-y-5">
+            <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-950/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <FolderArchive size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Complete Deployable ZIP Package</h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Includes linked multi-page HTML files, modular React TSX source components, Forge Schema JSON, and full project backup.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDownloadZip}
+                disabled={isBundlingZip}
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-2 shrink-0 cursor-pointer shadow-lg shadow-blue-600/20"
+              >
+                <Download size={14} />
+                <span>{isBundlingZip ? 'Generating Archive...' : 'Download .ZIP Bundle'}</span>
+              </button>
+            </div>
+
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                Included Archive Manifest ({zipManifest.length} files)
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {zipManifest.map((filePath) => (
+                  <div
+                    key={filePath}
+                    className="px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900/70 font-mono text-xs text-zinc-200 flex items-center justify-between"
+                  >
+                    <span className="truncate">{filePath}</span>
+                    <span className="text-[10px] text-emerald-400 shrink-0 ml-2">READY</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -350,7 +400,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-zinc-800 bg-zinc-950 text-[11px] text-zinc-400 flex items-center justify-between">
-          <span>License: MIT · Generated clean code with theme tokens &amp; SEO metadata</span>
+          <span>License: MIT • Portable HTML, React, Next.js &amp; Vue targets</span>
           <span>
             {totalComponents} components across {project.pages?.length || 1} screens
           </span>
@@ -359,3 +409,5 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, proje
     </div>
   );
 };
+
+

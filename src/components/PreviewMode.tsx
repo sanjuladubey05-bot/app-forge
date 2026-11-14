@@ -18,7 +18,7 @@ import {
   Box
 } from 'lucide-react';
 import { ActionStep, CanvasElement, Project, ViewportMode } from '../types/editor';
-import { ensureProjectPages, evaluateCondition, getPageTransitionClass, sanitizeUrl } from '../utils/project-engine';
+import { ensureProjectPages, evaluateCondition, sanitizeUrl } from '../utils/project-engine';
 import { ensureComplianceConfig } from '../utils/compliance-audit';
 import { ComplianceHubModal, ComplianceTabId } from './ComplianceHubModal';
 import { Widget3DSandbox } from './Widget3DSandbox';
@@ -561,15 +561,22 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
           </div>
         );
 
-      case 'widget3d':
+      case 'widget3d': {
+        const cfg = props.widget3d || {
+          presetId: 'webgl-orbital-prism' as const,
+          presetMode: 'threejs-webgl' as const,
+          title: 'Interactive 3D Widget',
+          heightPx: 280,
+        };
         return (
           <Widget3DSandbox
             key={element.id}
-            config={props.widget3d}
+            config={cfg}
             themeTokens={project.themeTokens}
             interactive={true}
           />
         );
+      }
 
       default:
         return null;
@@ -696,11 +703,12 @@ export const PreviewMode: React.FC<PreviewModeProps> = ({
       {/* Main Surface */}
       <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto flex items-center justify-center p-6 bg-zinc-950">
         <div
-          key={activePage.id}
-          style={{ backgroundColor: activePage.canvasBg || project.themeTokens?.backgroundColor || project.canvasBg }}
-          className={`w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4 ${getPageTransitionClass(activePage.transition)}`}
-          data-testid="preview-page-container"
-          data-page-transition={activePage.transition || 'fade'}
+          style={{
+            backgroundColor: activePage.canvasBg || project.themeTokens?.backgroundColor || project.canvasBg,
+            color: project.themeTokens?.textColor,
+            fontFamily: project.themeTokens?.fontFamily ? `'${project.themeTokens.fontFamily}', system-ui, sans-serif` : undefined,
+          }}
+          className={`w-full transition-all duration-200 ${getViewportWidthClass()} ${getPaddingClass()} flex flex-col space-y-4`}
         >
           {activePage.elements.length === 0 ? (
             <div className="py-20 text-center text-zinc-400 text-sm">
